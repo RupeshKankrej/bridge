@@ -137,7 +137,7 @@ Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreService
 - [ ] Without Accessibility for this build: ⏯ brings up the Mac's Accessibility prompt and the tablet shows the cause
 - [x] Battery switch on: the Mac's menu bar shows e.g. "82%" beside the icon and in the popover
 - [ ] Plug in the charger → "⚡︎" appears beside the level within a few seconds; unplug → it goes
-- [ ] **Gate:** play/pause YouTube (or whatever plays) on the Mac from the tablet (was Spotify; changed by agreement, ADR 0011)
+- [ ] **Gate (failed, accepted 2026-11-07; STATUS known issues):** play/pause YouTube (or whatever plays) on the Mac from the tablet (was Spotify; changed by agreement, ADR 0011)
 - [x] **Gate:** Chrome on the tablet → Share → Bridge → the page opens in the Mac's default browser; a toast says "Sent to <Mac>"
 - [x] Share plain text (e.g. from Keep) → it's on the Mac's clipboard with a "Text from your tablet" notice
 - [x] Mac: select text in Safari → right-click → Services → Send to Tablet → a tablet notification; tap opens the share sheet.
