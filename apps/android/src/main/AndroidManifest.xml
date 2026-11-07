@@ -11,6 +11,10 @@
     <!-- Keep the CPU and Wi-Fi awake during a transfer with the screen off (install-time permissions). -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Reconnect when the default network changes (Wi-Fi switch); install-time. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Shows the system "Let Bridge always run in background?" dialog during setup (spec §6). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".BridgeApplication"

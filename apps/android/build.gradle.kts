@@ -32,4 +32,5 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.okhttp)
     implementation(libs.play.services.code.scanner)
+    implementation(libs.work.runtime)
 }

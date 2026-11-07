@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,12 +23,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -40,6 +46,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private val app get() = application as BridgeApplication
     private val bridge get() = app.bridge
+    private val batteryExempt = mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,7 +57,9 @@ class MainActivity : ComponentActivity() {
         startForegroundService(Intent(this, BridgeService::class.java))
         setContent {
             MaterialTheme {
-                Surface(Modifier.fillMaxSize()) { HomeScreen(app, onScan = ::scan) }
+                Surface(Modifier.fillMaxSize()) {
+                    HomeScreen(app, batteryExempt.value, onScan = ::scan, onAllowBackground = ::requestBatteryExemption)
+                }
             }
         }
     }
@@ -58,6 +67,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         (application as BridgeApplication).clipboard.setForeground(true)
+        // Re-read on every resume: the user answers the system dialog or changes it in Settings.
+        batteryExempt.value = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
     }
 
     override fun onPause() {
@@ -65,17 +76,22 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
-    /** Play services draws the camera UI, so Bridge needs no CAMERA permission. */
-    private fun scan() {
+    /** Without the exemption Doze cuts the network and OxygenOS may kill the service with the screen off. */
+    private fun requestBatteryExemption() {
+        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+    }
+
+    /** Play services draws the camera UI, so Bridge needs no CAMERA permission. [host] overrides the QR's address if not blank. */
+    private fun scan(host: String) {
         val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
         GmsBarcodeScanning.getClient(this, options).startScan()
-            .addOnSuccessListener { barcode -> barcode.rawValue?.let(bridge::pair) }
+            .addOnSuccessListener { barcode -> barcode.rawValue?.let { bridge.pair(it, host) } }
             .addOnFailureListener { Toast.makeText(this, "Scanner unavailable: ${it.message}", Toast.LENGTH_LONG).show() }
     }
 }
 
 @Composable
-private fun HomeScreen(app: BridgeApplication, onScan: () -> Unit) {
+private fun HomeScreen(app: BridgeApplication, batteryExempt: Boolean, onScan: (host: String) -> Unit, onAllowBackground: () -> Unit) {
     val bridge = app.bridge
     val state by bridge.state.collectAsState()
     val resolver = app.contentResolver
@@ -95,9 +111,23 @@ private fun HomeScreen(app: BridgeApplication, onScan: () -> Unit) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Bridge", style = MaterialTheme.typography.headlineMedium)
 
+        if (!batteryExempt) {
+            Text("Bridge needs to run in the background to stay connected with the screen off.")
+            Button(onClick = onAllowBackground) { Text("Allow background use") }
+        }
+
         state.paired.forEach { peer ->
             Text("Paired with ${peer.name}", style = MaterialTheme.typography.titleLarge)
             Text(if (peer.online) "Connected" else "Offline, reconnecting…")
+            val host = peer.host
+            // For networks that block mDNS: the Mac got a new address and can't announce it.
+            if (!peer.online && host != null) {
+                var typed by remember(host) { mutableStateOf(host) }
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OutlinedTextField(typed, { typed = it }, label = { Text("Mac address") }, singleLine = true)
+                    OutlinedButton(onClick = { bridge.setAddress(peer.fingerprint, typed) }, enabled = typed.isNotBlank()) { Text("Connect") }
+                }
+            }
             OutlinedButton(onClick = { bridge.unpair(peer.fingerprint) }) { Text("Forget") }
         }
 
@@ -115,7 +145,15 @@ private fun HomeScreen(app: BridgeApplication, onScan: () -> Unit) {
                     Text("Waiting for ${pairing.peerName}…")
                 }
             }
-            state.paired.isEmpty() -> Button(onClick = onScan) { Text("Scan QR code") }
+            state.paired.isEmpty() -> {
+                var host by remember { mutableStateOf("") }
+                Button(onClick = { onScan(host) }) { Text("Scan QR code") }
+                OutlinedTextField(
+                    host, { host = it }, singleLine = true,
+                    label = { Text("Mac address (optional)") },
+                    supportingText = { Text("Only if the QR's address doesn't work here, e.g. Wi-Fi that isolates devices") },
+                )
+            }
         }
 
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
