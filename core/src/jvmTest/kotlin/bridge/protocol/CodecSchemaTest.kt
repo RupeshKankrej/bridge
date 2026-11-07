@@ -50,6 +50,9 @@ class CodecSchemaTest {
             message = PairReject(FP_MAC, "042917"),
             replyTo = "01JBV0R0Z7Q4X8K3M5N6P7Q8RF",
         ),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RJ", ts = 1_762_440_019_000, message = ClipboardSet(TEXT_MIME, "héllo \"wörld\"\n✓")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RK", ts = 1_762_440_019_100, message = ClipboardSet(TEXT_MIME, "x", sourceApp = "com.apple.Safari")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RM", ts = 1_762_440_020_000, message = ClipboardRequest),
     )
 
     @Test

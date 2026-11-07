@@ -2,6 +2,7 @@ package bridge.session
 
 import bridge.identity.Identity
 import bridge.identity.secureRandomBytes
+import bridge.port.ClipboardPort
 import bridge.port.Connection
 import bridge.port.ConnectionListener
 import bridge.port.DiscoveredPeer
@@ -9,9 +10,12 @@ import bridge.port.DiscoveryPort
 import bridge.port.KeyStorePort
 import bridge.port.TransportPort
 import bridge.port.TrustedPeer
+import bridge.protocol.ClipboardRequest
+import bridge.protocol.ClipboardSet
 import bridge.protocol.Codec
 import bridge.protocol.Envelope
 import bridge.protocol.Hello
+import bridge.protocol.MAX_CLIPBOARD_BYTES
 import bridge.protocol.Message
 import bridge.protocol.PROTOCOL_VERSION
 import bridge.protocol.PairConfirm
@@ -21,6 +25,7 @@ import bridge.protocol.Ping
 import bridge.protocol.Platform
 import bridge.protocol.Pong
 import bridge.protocol.ProtocolError
+import bridge.protocol.TEXT_MIME
 import bridge.protocol.newUlid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +88,7 @@ class Bridge internal constructor(
     private val keyStore: KeyStorePort,
     private val transport: TransportPort,
     private val discovery: DiscoveryPort,
+    private val clipboard: ClipboardPort,
     private val scope: CoroutineScope,
 ) {
     constructor(
@@ -92,7 +98,8 @@ class Bridge internal constructor(
         keyStore: KeyStorePort,
         transport: TransportPort,
         discovery: DiscoveryPort,
-    ) : this(name, platform, appVersion, keyStore, transport, discovery, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+        clipboard: ClipboardPort,
+    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, CoroutineScope(SupervisorJob() + Dispatchers.Main))
 
     private val identity = Identity.loadOrCreate(keyStore)
     private val myId = identity.fingerprint
@@ -114,6 +121,16 @@ class Bridge internal constructor(
     private val dialers = mutableMapOf<String, Job>()
     private var started = false
 
+    /**
+     * The newest clipboard text this device copied or applied, for last-writer-wins (spec §5.2).
+     * [origin] is the copying device's ID and breaks [ts] ties so both sides pick the same winner.
+     * Starts as a contentless floor at launch: we can't know how old the OS clipboard is, so a peer's
+     * item copied before we started never overwrites it.
+     */
+    private class Clip(val text: String?, val ts: Long, val origin: String)
+
+    private var clip = Clip(null, now(), myId)
+
     /** For Swift, which can't collect a Flow: [onChange] runs on the main thread for every state. */
     fun observe(onChange: (BridgeState) -> Unit) {
         scope.launch { state.collect { onChange(it) } }
@@ -127,6 +144,7 @@ class Bridge internal constructor(
             discovery.advertise(CONTROL_PORT, txt)
             transport.listen(CONTROL_PORT) { conn -> scope.launch { runSession(conn, expected = null, invite = null) } }
             discovery.browse { peers -> _state.update { s -> s.copy(discovered = peers.filter { it.id != myId }) } }
+            clipboard.watch { text -> scope.launch { onLocalCopy(text) } }
             keyStore.trustedPeers().filter { it.host != null }.forEach { keepConnected(it.fingerprint) }
             refreshPaired()
         }
@@ -265,7 +283,40 @@ class Bridge internal constructor(
                 drop(s, CLOSE_NORMAL, "pairing rejected")
             }
             is ProtocolError -> onPeerError(s, m)
+            // Not "not_paired": that code makes a paired peer forget us.
+            is ClipboardSet, ClipboardRequest -> if (!s.paired) {
+                send(s, ProtocolError("unauthorized", "pair first"), env.id)
+            } else if (m is ClipboardSet) {
+                onClipboardSet(s, m, env)
+            } else {
+                // Only resend what the peer doesn't already have.
+                clip.takeIf { it.text != null && it.origin != s.peer!!.deviceId }?.let { sendClip(s, it, env.id) }
+            }
         }
+    }
+
+    private fun onLocalCopy(text: String) {
+        // Same text as the shared clipboard: our own write seen again, or nothing new to send.
+        if (text == clip.text) return
+        if (text.encodeToByteArray().size > MAX_CLIPBOARD_BYTES) return fail("Copied text is over 1 MB, so it wasn't sent")
+        // A real copy is always the newest event; never let a peer's clock running ahead make it lose.
+        clip = Clip(text, maxOf(now(), clip.ts + 1), myId)
+        online.values.forEach { sendClip(it, clip, null) }
+    }
+
+    private fun onClipboardSet(s: Session, m: ClipboardSet, env: Envelope) {
+        val text = m.text
+        if (m.mime != TEXT_MIME || text == null) return send(s, ProtocolError("unsupported_mime", "only text/plain"), env.id)
+        if (text.encodeToByteArray().size > MAX_CLIPBOARD_BYTES) return send(s, ProtocolError("too_large", "clipboard text over 1 MB"), env.id)
+        val incoming = Clip(text, env.ts, s.peer!!.deviceId)
+        if (compareValuesBy(incoming, clip, { it.ts }, { it.origin }) <= 0) return
+        val changed = text != clip.text
+        clip = incoming
+        if (changed) clipboard.write(text)
+    }
+
+    private fun sendClip(s: Session, c: Clip, replyTo: String?) {
+        s.conn.send(Codec.encode(Envelope(newUlid(now()), c.ts, ClipboardSet(TEXT_MIME, c.text), replyTo)))
     }
 
     private fun onHello(s: Session, m: Hello) {
@@ -346,6 +397,8 @@ class Bridge internal constructor(
         s.paired = true
         val id = s.peer!!.deviceId
         online.put(id, s)?.takeIf { it !== s }?.let { drop(it, CLOSE_NORMAL, "replaced by a newer connection") }
+        // Catch up on anything copied while we were apart; last-writer-wins sorts out which side keeps it.
+        send(s, ClipboardRequest)
         _state.update { it.copy(message = null) }
         refreshPaired()
     }
@@ -376,10 +429,12 @@ class Bridge internal constructor(
     }
 
     private fun send(s: Session, m: Message, replyTo: String? = null) {
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = now()
         s.conn.send(Codec.encode(Envelope(newUlid(now), now, m, replyTo)))
     }
 }
+
+private fun now() = Clock.System.now().toEpochMilliseconds()
 
 private fun newCode(): String {
     val n = secureRandomBytes(4).fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) }

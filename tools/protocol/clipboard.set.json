@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/clipboard.set.json",
+  "title": "clipboard.set payload",
+  "description": "The envelope's ts is when the content was copied; receivers keep the newest (ts, then sender deviceId).",
+  "type": "object",
+  "required": ["mime"],
+  "properties": {
+    "mime": { "type": "string", "description": "text/plain in Phase 1" },
+    "text": { "type": "string", "description": "UTF-8, at most 1 MB; required when mime is text/plain" },
+    "sourceApp": { "type": "string", "description": "optional bundle ID / package of the app that copied" }
+  },
+  "additionalProperties": false
+}

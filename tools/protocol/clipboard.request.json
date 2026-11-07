@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/clipboard.request.json",
+  "title": "clipboard.request payload",
+  "description": "Asks the peer to resend its current clipboard as clipboard.set with replyTo set; no answer if it has none.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

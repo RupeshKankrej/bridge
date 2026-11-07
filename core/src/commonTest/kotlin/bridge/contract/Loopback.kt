@@ -1,6 +1,7 @@
 package bridge.contract
 
 import bridge.identity.fingerprint
+import bridge.port.ClipboardPort
 import bridge.port.Connection
 import bridge.port.ConnectionListener
 import bridge.port.DiscoveredPeer
@@ -131,6 +132,32 @@ class FakeKeyStore : KeyStorePort {
     }
 }
 
+/**
+ * Worst case for echo: no origin tag, so our own writes come back as local copies, the way they
+ * would if a platform lost the tag. Core must still not echo them.
+ */
+class FakeClipboard : ClipboardPort {
+    var text: String? = null
+        private set
+    val writes = mutableListOf<String>()
+    private var onLocalChange: (String) -> Unit = {}
+
+    override fun watch(onLocalChange: (String) -> Unit) {
+        this.onLocalChange = onLocalChange
+    }
+
+    override fun write(text: String) {
+        writes += text
+        copy(text)
+    }
+
+    /** The user copies [text] on this device. */
+    fun copy(text: String) {
+        this.text = text
+        onLocalChange(text)
+    }
+}
+
 class Device(val lan: Lan, val host: String, name: String, platform: Platform, scope: CoroutineScope) {
     val keyStore = FakeKeyStore()
     private val myFingerprint by lazy { fingerprint(keyStore.loadCertificate()!!) }
@@ -151,7 +178,8 @@ class Device(val lan: Lan, val host: String, name: String, platform: Platform, s
         override fun browse(onPeers: (List<DiscoveredPeer>) -> Unit) = lan.browse(onPeers)
     }
 
-    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, scope)
+    val clipboard = FakeClipboard()
+    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, scope)
     val id get() = bridge.state.value.deviceId
     val state get() = bridge.state.value
 }
