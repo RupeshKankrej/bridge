@@ -29,7 +29,8 @@ final class MacNetwork: NSObject, TransportPort, DiscoveryPort {
         browser.browseResultsChangedHandler = { results, _ in
             onPeers(results.compactMap { result in
                 guard case .bonjour(let txt) = result.metadata, let id = txt["id"], let name = txt["name"] else { return nil }
-                return DiscoveredPeer(id: id, name: name, platform: txt["platform"] ?? "")
+                // No address: only the tablet dials, so the Mac just lists who is nearby.
+                return DiscoveredPeer(id: id, name: name, platform: txt["platform"] ?? "", host: nil, port: 0)
             })
         }
         browser.stateUpdateHandler = { state in
@@ -48,8 +49,13 @@ final class MacNetwork: NSObject, TransportPort, DiscoveryPort {
             listener.newConnectionHandler = { [queue] connection in
                 MacConnection.accept(connection, queue: queue, onReady: onConnection)
             }
-            listener.stateUpdateHandler = { state in
+            listener.stateUpdateHandler = { [weak self, queue] state in
                 log.info("listener on \(port, privacy: .public): \(String(describing: state), privacy: .public)")
+                // A listener can fail when the network goes away (sleep, Wi-Fi switch); without it the tablet can't get back in.
+                if case .failed = state {
+                    listener.cancel()
+                    queue.asyncAfter(deadline: .now() + 2) { self?.listen(port: port, onConnection: onConnection) }
+                }
             }
             listener.start(queue: queue)
             self.listener = listener

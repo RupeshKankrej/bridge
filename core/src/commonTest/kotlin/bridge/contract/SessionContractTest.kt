@@ -130,6 +130,81 @@ class SessionContractTest {
         assertEquals(CLOSE_POLICY, raw.closeCode)
     }
 
+    @Test
+    fun reconnectDialsAtOnceInsteadOfWaitingOutTheBackoff() = runTest {
+        val p = twoDevices()
+        pairUp(p)
+        p.lan.partitioned = true
+        advanceTimeBy(3.minutes) // backoff is now 30 s
+        p.lan.partitioned = false
+        p.tab.bridge.reconnect()
+        runCurrent()
+        assertTrue(online(p.mac) && online(p.tab))
+    }
+
+    @Test
+    fun reconnectDropsAHalfOpenSessionWithinTheProbeTimeout() = runTest {
+        val p = twoDevices()
+        pairUp(p)
+        p.lan.partitioned = true // the Mac slept: the tablet's socket still looks open
+        p.tab.bridge.reconnect()
+        advanceTimeBy(4.seconds)
+        assertTrue(online(p.tab), "still waiting for the pong")
+        advanceTimeBy(2.seconds)
+        assertTrue(!online(p.tab), "dropped at 5 s, not 60 s")
+        p.lan.partitioned = false
+        advanceTimeBy(2.seconds)
+        assertTrue(online(p.mac) && online(p.tab))
+    }
+
+    @Test
+    fun reconnectLeavesAHealthySessionAlone() = runTest {
+        val p = twoDevices()
+        pairUp(p)
+        val attempts = p.lan.connectAttempts.size
+        p.tab.bridge.reconnect()
+        advanceTimeBy(10.seconds)
+        assertTrue(online(p.mac) && online(p.tab))
+        assertEquals(attempts, p.lan.connectAttempts.size)
+    }
+
+    @Test
+    fun followsTheMacToANewAddressFoundByMdnsAndRemembersIt() = runTest {
+        val p = twoDevices()
+        pairUp(p)
+        p.lan.move(p.mac.host, "10.0.1.7")
+        runCurrent()
+        assertTrue(online(p.mac) && online(p.tab), "dialled the new address without waiting for the backoff")
+        assertEquals("10.0.1.7", p.tab.keyStore.peers.single().host)
+    }
+
+    @Test
+    fun withoutMdnsTheLastKnownAddressStillWorks() = runTest {
+        val p = twoDevices()
+        pairUp(p)
+        p.lan.unadvertise(p.mac.id)
+        p.lan.partitioned = true
+        advanceTimeBy(2.minutes)
+        p.lan.partitioned = false
+        advanceTimeBy(MAX_WAIT)
+        assertTrue(online(p.mac) && online(p.tab))
+        assertEquals(p.mac.host, p.tab.keyStore.peers.single().host)
+    }
+
+    @Test
+    fun aTypedAddressReplacesTheStoredOne() = runTest {
+        val p = twoDevices()
+        pairUp(p)
+        p.lan.unadvertise(p.mac.id)
+        p.lan.move(p.mac.host, "10.0.1.7") // new address, but mDNS is blocked so nobody announces it
+        advanceTimeBy(MAX_WAIT)
+        assertTrue(!online(p.tab))
+        p.tab.bridge.setAddress(p.mac.id, " 10.0.1.7 ")
+        runCurrent()
+        assertTrue(online(p.mac) && online(p.tab))
+        assertEquals("10.0.1.7", p.tab.keyStore.peers.single().host)
+    }
+
     private companion object {
         val MAX_WAIT = 31.seconds
 

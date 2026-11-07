@@ -1,7 +1,7 @@
 # Status
 
-**Current phase:** 1 — Foundation
-**Current milestone:** M1.5 — Mac menu-bar app and Android foreground service stay connected across sleep/wake
+**Current phase:** 2 — Daily driver (Phase 1 released as v0.1.0 on 2026-11-07)
+**Current milestone:** M2.1 — Notifications mirrored with dismiss sync and inline reply
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -20,6 +20,10 @@
   53319 (client certificate required) with auto-accept and `Upload-Offset` resume. Mac: drag onto the menu-bar icon, Finder
   Services "Send with Bridge", Accept / Decline card, transfer list. Android: share target, SAF files and folders, offer
   notification and dialog, transfer list, wake/Wi-Fi locks during transfers. Device gate passed except throughput (below).
+- M1.5 — Stays connected (ADR 0008). `core` `reconnect()` with a 5 s ping probe, mDNS-located address with the last known IP
+  kept as fallback, typed Mac address. Mac open at login (`SMAppService`), reconnect on wake and network change. Android
+  battery-exemption prompt, WorkManager watchdog, reconnect on unlock and network change. Phase 1 device gate passed on
+  2026-11-07 (throughput and password-manager skip accepted as known issues). Tagged **v0.1.0**.
 
 ## Known issues
 - M1.4 throughput gate (≥ 40 MB/s) not measured: the home Wi-Fi gives raw TCP of only ~7–8 MB/s between the Mac and the
@@ -30,6 +34,13 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M1.5 device gate passed, including sleep/wake, 30 min screen off, Wi-Fi switch, watchdog restart and typed
+  address. Phase 1 done; tagged v0.1.0. Phase 2 starts with M2.1.
+- 2026-11-07 — M1.5 built, device gate pending (docs/testing.md, M1.5 gate). `core`: `reconnect()` (dial now + 5 s ping probe),
+  mDNS-located address with the last known IP kept as fallback, typed address on pairing and for an offline Mac (ADR 0008).
+  Mac: `SMAppService` login item (on by default, menu toggle), reconnect on wake and `NWPathMonitor` change, listener restart
+  on failure. Android: NSD browse + resolve, reconnect on unlock and network change, battery-exemption prompt, 15-minute
+  WorkManager watchdog. v0.1.0 is tagged and Phase 2 starts once the gate passes.
 - 2026-11-07 — M1.4c built: Android share target, SAF files/folders, offer notification + dialog, transfer list; Bridge ↔ Bridge
   transfers work both ways (1 GB and 2 GB intact). Throughput gate not met **because of the network**: raw TCP between the devices
   is ~7–8 MB/s on the current Wi-Fi (Pad 3 link 432/540 Mbps through one AP); Bridge runs at that limit. Needs a better link to judge.

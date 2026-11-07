@@ -54,6 +54,9 @@ internal val HEARTBEAT_INTERVAL = 15.seconds
 internal const val MAX_MISSED_PONGS = 3
 internal val MAX_BACKOFF = 30.seconds
 
+/** After a wake or network change, a live-looking session that doesn't answer a ping within this is dead. */
+internal val PROBE_TIMEOUT = 5.seconds
+
 data class BridgeState(
     /** This device's certificate fingerprint. */
     val deviceId: String,
@@ -67,7 +70,8 @@ data class BridgeState(
     val message: String? = null,
 )
 
-data class PeerStatus(val fingerprint: String, val name: String, val online: Boolean)
+/** [host] is the address this side dials, or null on the side that only accepts. */
+data class PeerStatus(val fingerprint: String, val name: String, val online: Boolean, val host: String? = null)
 
 /** [awaitingLocalConfirm]: this side (the scanner) shows Confirm / Cancel; otherwise it waits for the peer. */
 data class Pairing(val peerName: String, val code: String, val awaitingLocalConfirm: Boolean)
@@ -113,6 +117,7 @@ class Bridge internal constructor(
         var peer: Hello? = null
         var paired = false
         var missedPongs = 0
+        var pongs = 0
         var pairingCode: String? = null
         var confirmSent = false
     }
@@ -120,6 +125,9 @@ class Bridge internal constructor(
     private val online = mutableMapOf<String, Session>()
     private var pairingSession: Session? = null
     private val dialers = mutableMapOf<String, Job>()
+
+    /** Where mDNS last saw each peer; unauthenticated, so it's only a dial target until the pinned TLS handshake succeeds. */
+    private val located = mutableMapOf<String, Pair<String, Int>>()
     private var started = false
 
     /**
@@ -144,7 +152,7 @@ class Bridge internal constructor(
             val txt = mapOf("id" to myId, "name" to name, "platform" to platform.name.lowercase(), "v" to "$PROTOCOL_VERSION", "caps" to "")
             discovery.advertise(CONTROL_PORT, txt)
             transport.listen(CONTROL_PORT) { conn -> scope.launch { runSession(conn, expected = null, invite = null) } }
-            discovery.browse { peers -> _state.update { s -> s.copy(discovered = peers.filter { it.id != myId }) } }
+            discovery.browse { peers -> scope.launch { onDiscovered(peers.filter { it.id != myId }) } }
             clipboard.watch { text -> scope.launch { onLocalCopy(text) } }
             keyStore.trustedPeers().filter { it.host != null }.forEach { keepConnected(it.fingerprint) }
             refreshPaired()
@@ -163,10 +171,14 @@ class Bridge internal constructor(
         }
     }
 
-    /** Scanner side: [uri] is the QR text. */
-    fun pair(uri: String) {
+    /**
+     * Scanner side: [uri] is the QR text. [host], if set, replaces the QR's address (the user typed it because
+     * the QR's address isn't reachable from here); the fingerprint and code still come from the QR.
+     */
+    fun pair(uri: String, host: String? = null) {
         scope.launch {
-            val invite = PairingInvite.parse(uri) ?: return@launch fail("That QR code isn't a Bridge pairing code")
+            val scanned = PairingInvite.parse(uri) ?: return@launch fail("That QR code isn't a Bridge pairing code")
+            val invite = host?.trim()?.takeIf { it.isNotEmpty() }?.let { scanned.copy(host = it) } ?: scanned
             _state.update { it.copy(message = null) }
             val conn = connect(invite.host, invite.port) ?: return@launch
             runSession(conn, invite.fingerprint, invite)
@@ -199,15 +211,64 @@ class Bridge internal constructor(
         }
     }
 
+    /** Scanner side: the user typed a new address for paired [fingerprint] (e.g. mDNS is blocked on this network). */
+    fun setAddress(fingerprint: String, host: String) {
+        scope.launch {
+            val peer = keyStore.trustedPeers().find { it.fingerprint == fingerprint && it.host != null } ?: return@launch
+            keyStore.saveTrustedPeer(peer.copy(host = host.trim()))
+            refreshPaired()
+            redial(fingerprint)
+        }
+    }
+
+    /**
+     * The device woke, the screen was unlocked or the network changed: dial offline peers now instead of
+     * waiting out the backoff, and ping online ones, dropping any that don't answer within [PROBE_TIMEOUT]
+     * (a socket from before sleep can look open for another minute).
+     */
+    fun reconnect() {
+        scope.launch {
+            online.values.toList().forEach { s ->
+                val pongs = s.pongs
+                send(s, Ping)
+                scope.launch {
+                    delay(PROBE_TIMEOUT)
+                    if (s.pongs == pongs) drop(s, CLOSE_POLICY, "no answer after wake or network change")
+                }
+            }
+            keyStore.trustedPeers().filter { it.host != null && it.fingerprint !in online }.forEach { redial(it.fingerprint) }
+        }
+    }
+
+    private fun onDiscovered(peers: List<DiscoveredPeer>) {
+        _state.update { it.copy(discovered = peers) }
+        peers.forEach { p ->
+            val at = (p.host ?: return@forEach) to p.port
+            // A new address for a paired peer we can't reach: try it now rather than after the backoff.
+            if (located.put(p.id, at) != at && p.id !in online && p.id in dialers) redial(p.id)
+        }
+    }
+
+    private fun redial(fingerprint: String) {
+        dialers.remove(fingerprint)?.cancel()
+        keepConnected(fingerprint)
+    }
+
     private fun keepConnected(fingerprint: String) {
         if (dialers[fingerprint]?.isActive == true) return
         dialers[fingerprint] = scope.launch {
             var backoff = 1.seconds
             while (true) {
                 val peer = keyStore.trustedPeers().find { it.fingerprint == fingerprint } ?: break
-                val host = peer.host ?: break
-                val conn = connect(host, peer.port)
-                if (conn != null && runSession(conn, fingerprint, invite = null)) backoff = 1.seconds
+                val stored = (peer.host ?: break) to peer.port
+                // mDNS's current answer first; the last known address covers networks where mDNS is slow or blocked.
+                for ((host, port) in listOfNotNull(located[fingerprint], stored).distinct()) {
+                    val conn = connect(host, port) ?: continue
+                    // Remember the address only once the pinned certificate proves it's the peer.
+                    if (conn.peerFingerprint == fingerprint && (host to port) != stored) keyStore.saveTrustedPeer(peer.copy(host = host, port = port))
+                    if (runSession(conn, fingerprint, invite = null)) backoff = 1.seconds
+                    break
+                }
                 delay(backoff)
                 backoff = minOf(backoff * 2, MAX_BACKOFF)
             }
@@ -280,7 +341,10 @@ class Bridge internal constructor(
         // Exhaustive on purpose: a new message type must decide here whether it needs a paired session.
         when (m) {
             Ping -> send(s, Pong, replyTo = env.id)
-            Pong -> s.missedPongs = 0
+            Pong -> {
+                s.missedPongs = 0
+                s.pongs++
+            }
             is Hello -> onHello(s, m)
             is PairRequest -> onPairRequest(s, m, env.id)
             is PairConfirm -> onPairConfirm(s, m, env.id)
@@ -427,7 +491,7 @@ class Bridge internal constructor(
     private fun rotateCode() = _state.update { s -> s.copy(invite = s.invite?.copy(code = newCode())) }
 
     private fun refreshPaired() = _state.update { s ->
-        s.copy(paired = keyStore.trustedPeers().map { PeerStatus(it.fingerprint, it.name, it.fingerprint in online) })
+        s.copy(paired = keyStore.trustedPeers().map { PeerStatus(it.fingerprint, it.name, it.fingerprint in online, it.host) })
     }
 
     private fun fail(message: String) = _state.update { it.copy(message = message) }

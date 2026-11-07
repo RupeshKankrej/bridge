@@ -8,7 +8,10 @@ import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.text.format.Formatter
@@ -39,13 +42,24 @@ class BridgeService : Service() {
         getSystemService(WifiManager::class.java).createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "bridge:transfer").apply { setReferenceCounted(false) }
     }
     private var shownOffer: String? = null
+    private lateinit var notification: Notification
+
+    /** Unlocking is the moment the user expects the Mac to be there; don't wait out the reconnect backoff. */
+    private val userPresent = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = (application as BridgeApplication).bridge.reconnect()
+    }
+
+    // Fires once on registration too; a reconnect then is harmless.
+    private val networkChanged = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = (application as BridgeApplication).bridge.reconnect()
+    }
 
     override fun onCreate() {
         super.onCreate()
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Connection", NotificationManager.IMPORTANCE_LOW))
         notifications.createNotificationChannel(NotificationChannel(OFFERS, "Incoming files", NotificationManager.IMPORTANCE_HIGH))
         val sendClipboard = PendingIntent.getActivity(this, 1, Intent(this, ClipboardActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val notification = Notification.Builder(this, CHANNEL)
+        notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("Bridge is running")
             .setContentIntent(openApp())
@@ -57,6 +71,10 @@ class BridgeService : Service() {
         val app = application as BridgeApplication
         app.bridge.start()
         app.files.start()
+        // Manifest receivers can't get USER_PRESENT since Android 8; only a running context can.
+        registerReceiver(userPresent, IntentFilter(Intent.ACTION_USER_PRESENT))
+        getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkChanged)
+        ServiceWatchdog.schedule(this)
         scope.launch { app.files.state.collect(::onFiles) }
     }
 
@@ -99,11 +117,17 @@ class BridgeService : Service() {
 
     private fun openApp() = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Every startForegroundService() (e.g. from the watchdog) must be answered with startForeground() within seconds.
+        startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        return START_STICKY
+    }
 
     override fun onBind(intent: Intent?) = null
 
     override fun onDestroy() {
+        unregisterReceiver(userPresent)
+        getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkChanged)
         scope.cancel()
         if (wakeLock.isHeld) wakeLock.release()
         if (wifiLock.isHeld) wifiLock.release()

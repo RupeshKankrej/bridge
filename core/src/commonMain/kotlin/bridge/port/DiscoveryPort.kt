@@ -8,4 +8,5 @@ interface DiscoveryPort {
     fun browse(onPeers: (List<DiscoveredPeer>) -> Unit) {}
 }
 
-data class DiscoveredPeer(val id: String, val name: String, val platform: String)
+/** [host]/[port] are the resolved address, or null/0 where the platform doesn't resolve (the Mac only lists nearby devices). */
+data class DiscoveredPeer(val id: String, val name: String, val platform: String, val host: String? = null, val port: Int = 0)

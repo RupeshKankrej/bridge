@@ -1,5 +1,7 @@
 import AppKit
 import Combine
+import Network
+import ServiceManagement
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 import BridgeCore
@@ -132,6 +134,7 @@ final class BridgeModel: ObservableObject {
     @Published private(set) var problem: String?
     /// Files dropped or sent via Services, waiting for the user to pick a device.
     @Published private(set) var pendingSend: [MacOutgoingFile] = []
+    @Published private(set) var launchAtLogin = SMAppService.mainApp.status
     /// Opens the popover: a send needs a device picked.
     var onAttention: () -> Void = {}
     /// Called when the pending offer changes (nil once answered or expired).
@@ -139,6 +142,7 @@ final class BridgeModel: ObservableObject {
     private let bridge: Bridge
     private let fileTransfer: FileTransfer
     private let activity: NSObjectProtocol
+    private let pathMonitor = NWPathMonitor()
     private var subscriptions: Set<AnyCancellable> = []
 
     var isConnected: Bool { state?.paired.contains { $0.online } ?? false }
@@ -182,7 +186,40 @@ final class BridgeModel: ObservableObject {
             }
         }
         fileTransfer.start()
+        watchWakeAndNetwork()
+        enableLaunchAtLoginOnFirstRun()
         fileProblems.receive(on: DispatchQueue.main).sink { [weak self] in self?.problem = $0 }.store(in: &subscriptions)
+    }
+
+    /// Sessions from before sleep or on the old network look open but are dead; core pings them and drops the silent ones
+    /// so the tablet's redial is accepted at once. The Mac never dials, so this is all "reconnect" means on this side.
+    private func watchWakeAndNetwork() {
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.bridge.reconnect() }
+        }
+        // Fires on every interface change (Wi-Fi network switch, Ethernet plugged in) and once at start.
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            MainActor.assumeIsolated { self?.bridge.reconnect() }
+        }
+        pathMonitor.start(queue: .main)
+    }
+
+    /// Spec §7: launch at login defaults to on. Registered once; after that the menu toggle is the user's choice.
+    private func enableLaunchAtLoginOnFirstRun() {
+        let key = "launchAtLoginDefaulted"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        setLaunchAtLogin(true)
+    }
+
+    func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            problem = "Couldn't change Open at Login: \(error.localizedDescription)"
+        }
+        launchAtLogin = SMAppService.mainApp.status
     }
 
     func isPaired(_ peer: LocalSendPeer) -> Bool { state?.paired.contains { $0.fingerprint == peer.fingerprint } ?? false }
@@ -270,6 +307,11 @@ struct MenuView: View {
                 }
             }
             Divider()
+            Toggle("Open at Login", isOn: Binding(get: { model.launchAtLogin == .enabled }, set: { model.setLaunchAtLogin($0) }))
+            if model.launchAtLogin == .requiresApproval {
+                // macOS blocked it (e.g. turned off under Login Items once); only the user can allow it there.
+                Button("Allow in Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+            }
             Button("Quit Bridge") { NSApp.terminate(nil) }
         }
         .padding()
