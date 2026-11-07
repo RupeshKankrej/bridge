@@ -28,4 +28,7 @@ don't echo. Building M1.3 raised four gaps:
   Phase 1; revisit if it bites in daily use (M2.5).
 - The Mac polls every 250 ms (spec §5.2), so Mac → tablet is up to 250 ms + network after the copy. The
   "< 150 ms" budget (spec §8) holds for propagation after the copy is detected, not end-to-end. Lowering the poll
-  interval to ~50 ms would meet it end-to-end at a small CPU cost; not done without agreement.
+  interval to ~50 ms would meet it end-to-end at a small CPU cost. Decided 2026-11-07: keep 250 ms; it felt instant
+  in the device gate.
+- Unknown message types get `error {code: "unsupported_type"}` with `replyTo` set, and the side receiving that error
+  ignores it, so two app builds of the same protocol version can differ by a message type without user-facing errors.

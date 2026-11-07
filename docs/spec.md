@@ -392,7 +392,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 
 - [x] M1.1 `core` builds for JVM, Android and macOS; `hello`/`ping` round-trip in a JVM test
 - [x] M1.2 mDNS discovery + QR pairing between the real MacBook and tablet
-- [ ] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
+- [x] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
 - [ ] M1.4 LocalSend server passes interop with the official LocalSend app, both directions
 - [ ] M1.5 Mac menu-bar app and Android foreground service stay connected across sleep/wake
 
