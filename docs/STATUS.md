@@ -1,7 +1,7 @@
 # Status
 
 **Current phase:** 2 — Daily driver (Phase 1 released as v0.1.0 on 2026-11-07)
-**Current milestone:** M2.4 — AirDrop visibility toggle, receive-folder and transfer-list plumbing
+**Current milestone:** M2.4 (built, device gate pending) and M2.5 — checklist re-run, diagnostics, crash log, tablet redesign, then two weeks of daily use
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -43,7 +43,19 @@
   link share target, links/text from the Mac as notifications; three switches, off by default.
 
 ## Known issues
-- M2.3 media controls don't work: the tablet's card shows, but ⏯ ⏭ ⏮ and the volume slider have no effect on the Mac
+- AirDrop (F13) can't work on the Pad 3: its firmware has no Wi-Fi Aware (checked 2026-11-07, OxygenOS 16.0.10.600), which
+  both Tier A (Quick Share) and Tier B (own stack) need. OnePlus disabled it on purpose: the chip (SM8750) supports NAN, but `/vendor/etc/permissions/android.hardware.wifi.aware.xml`
+  has the feature commented out ("Remove for disable the wifi aware function", an OPLUS stability fix) and the Wi-Fi driver
+  config sets `g_nan_config=0`. Only an OxygenOS update can change it; rooting to override both is not pursued (wipes the
+  tablet, fails Play Integrity, and re-enables something OnePlus switched off for stability).
+  The M2.4 visibility setting stays as plumbing; M3.4 is on hold until
+  an OxygenOS update adds Wi-Fi Aware (`adb shell pm has-feature android.hardware.wifi.aware`). Workaround: LocalSend on the
+  iPhone/iPad sends to and receives from Bridge today.
+- M2.3 media controls — **root cause found 2026-11-07 (M2.5)**: the Mac build is ad-hoc signed, so every rebuild loses its
+  Accessibility grant, and `MacMedia` dropped the refusal silently. Fixed: a refused media command now answers
+  `permission_missing` and the tablet shows the cause. Remaining: re-grant Accessibility (remove Bridge with −, add it again)
+  and re-run the M2.3 media checks. Signing with the Apple Development identity would stop grants resetting on every build.
+  Original note: M2.3 media controls don't work: the tablet's card shows, but ⏯ ⏭ ⏮ and the volume slider have no effect on the Mac
   (2026-11-07, YouTube in the browser). Not investigated; accepted as is by agreement. Suspects, in order: the Mac
   build's Accessibility grant went stale after re-signing (the tablet would show a `permission_missing` message), the
   posted system-defined events not reaching the Now Playing app on macOS 26, and the volume AppleScript failing under the
@@ -61,6 +73,11 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M2.4 and M2.5 software built (ADR 0012): AirDrop visibility setting + tile (stored only), receive folder on
+  both sides, diagnostics on both apps (state, address, link quality from the heartbeat, last error), local crash logs,
+  tablet redesign (Material You, Home / Send / Settings, LocalSend-style Send with File/Media/Text/Folder/Paste). Mac
+  popover restyled with a Settings window (General, Diagnostics). Device gates pending; the two-week clock starts once
+  the Phase 1 + 2 checklist passes. v0.2.0 is tagged at the end of the two weeks, then STATUS moves to Phase 3.
 - 2026-11-07 — M2.3 done. Share and battery-level checks passed; media controls show on the tablet but don't act on the
   Mac, accepted as a known issue. Next: M2.4.
 - 2026-11-07 — M2.3 share checks passed on the devices (link Chrome → Mac browser, text both ways, switch off, offline).

@@ -1,0 +1,11 @@
+<!-- Bridge glyph: an arch over a deck, with hangers and two piers. 108dp adaptive-icon canvas; content stays inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- The ink spans y 45…76 (the arch peaks halfway to its control point); shift it to the canvas centre. -->
+    <group android:translateY="-6.5">
+    <path android:pathData="M33,64 Q54,26 75,64" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M43,52.5 V64 M54,45 V64 M65,52.5 V64" android:strokeColor="#FFFFFFFF" android:strokeWidth="3" android:strokeLineCap="round" />
+    <path android:pathData="M28,64 H80" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round" />
+    <path android:pathData="M36,64 V76 M72,64 V76" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round" />
+    </group>
+</vector>

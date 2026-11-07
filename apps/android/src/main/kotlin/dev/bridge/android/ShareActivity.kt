@@ -57,11 +57,11 @@ class ShareActivity : ComponentActivity() {
             }
         }
         setContent {
-            MaterialTheme {
+            BridgeTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("Bridge", style = MaterialTheme.typography.headlineMedium)
-                        problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Page {
+                        ScreenTitle("Bridge")
+                        problem?.let { Notice(it) }
                         FilesPanel(app)
                         Button(onClick = ::finish) { Text("Done") }
                     }
@@ -87,9 +87,11 @@ class ShareActivity : ComponentActivity() {
         Intent.ACTION_SEND -> listOfNotNull(
             if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra(Intent.EXTRA_STREAM),
         )
+
         Intent.ACTION_SEND_MULTIPLE ->
             (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM))
                 .orEmpty()
+
         else -> emptyList()
     }
 }

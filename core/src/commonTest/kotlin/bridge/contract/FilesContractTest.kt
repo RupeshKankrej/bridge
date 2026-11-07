@@ -76,6 +76,19 @@ class FilesContractTest {
     }
 
     @Test
+    fun clearFinishedEmptiesTheList() = runTest {
+        val p = nodes()
+        p.mac.files.send(p.mac.state.peer(p.tab.id), listOf(BytesFile("x", ByteArray(3))))
+        settle()
+        assertEquals(TransferStatus.DONE, p.mac.state.last().status)
+        p.mac.files.clearFinished()
+        p.tab.files.clearFinished()
+        settle()
+        assertEquals(emptyList(), p.mac.state.transfers)
+        assertEquals(emptyList(), p.tab.state.transfers)
+    }
+
+    @Test
     fun pairedPeerWithAKnownAddressIsListedWithoutMulticast() = runTest {
         val scope: CoroutineScope = backgroundScope
         val io = StandardTestDispatcher(testScheduler)

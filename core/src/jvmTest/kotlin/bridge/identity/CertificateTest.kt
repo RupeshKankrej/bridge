@@ -14,7 +14,11 @@ class CertificateTest {
     fun selfSignedCertificateParsesAndVerifiesWithTheJdk() {
         val keys = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
         val der = selfSignedCertificate(keys.public.encoded) { tbs ->
-            Signature.getInstance("SHA256withECDSA").run { initSign(keys.private); update(tbs); sign() }
+            Signature.getInstance("SHA256withECDSA").run {
+                initSign(keys.private)
+                update(tbs)
+                sign()
+            }
         }
 
         val cert = CertificateFactory.getInstance("X.509").generateCertificate(der.inputStream()) as X509Certificate

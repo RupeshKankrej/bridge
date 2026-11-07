@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import bridge.port.SharePort
 import bridge.protocol.ShareText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +32,57 @@ class Features(context: Context) {
     val media = Toggle("media")
     val battery = Toggle("battery")
     val share = Toggle("share")
+
+    /**
+     * AirDrop visibility (spec §5.10). Plumbing only until Tier A or B exists: nothing advertises yet, the UI says so.
+     * Everyone reverts to Bridge devices only at [everyoneUntil] unless that is 0 ("always", for home use).
+     */
+    enum class AirDrop { OFF, BRIDGE, EVERYONE }
+
+    private val _airDrop = MutableStateFlow(readAirDrop())
+    val airDrop: StateFlow<AirDrop> = _airDrop.asStateFlow()
+    private val _everyoneUntil = MutableStateFlow(prefs.getLong("airdropUntil", 0))
+    val everyoneUntil: StateFlow<Long> = _everyoneUntil.asStateFlow()
+    private val revert = Handler(Looper.getMainLooper())
+
+    fun setAirDrop(value: AirDrop, always: Boolean = false) {
+        val until = if (value == AirDrop.EVERYONE && !always) System.currentTimeMillis() + EVERYONE_FOR else 0
+        prefs.edit().putString("airdrop", value.name).putLong("airdropUntil", until).apply()
+        _airDrop.value = value
+        _everyoneUntil.value = until
+        scheduleRevert()
+    }
+
+    private fun readAirDrop(): AirDrop {
+        val stored = prefs.getString("airdrop", null)?.let(AirDrop::valueOf) ?: AirDrop.BRIDGE
+        val until = prefs.getLong("airdropUntil", 0)
+        return if (stored == AirDrop.EVERYONE && until != 0L && until <= System.currentTimeMillis()) AirDrop.BRIDGE else stored
+    }
+
+    private fun scheduleRevert() {
+        revert.removeCallbacksAndMessages(null)
+        val until = _everyoneUntil.value
+        if (_airDrop.value == AirDrop.EVERYONE && until != 0L) {
+            revert.postDelayed({ setAirDrop(AirDrop.BRIDGE) }, (until - System.currentTimeMillis()).coerceAtLeast(0))
+        }
+    }
+
+    init {
+        scheduleRevert()
+    }
+
+    /** SAF tree chosen as the receive folder; null = Download/Bridge via MediaStore (spec §7). */
+    private val _receiveFolder = MutableStateFlow(prefs.getString("receiveFolder", null)?.let(Uri::parse))
+    val receiveFolder: StateFlow<Uri?> = _receiveFolder.asStateFlow()
+
+    fun setReceiveFolder(tree: Uri?) {
+        prefs.edit().putString("receiveFolder", tree?.toString()).apply()
+        _receiveFolder.value = tree
+    }
+
+    private companion object {
+        const val EVERYONE_FOR = 10 * 60 * 1000L
+    }
 }
 
 /**

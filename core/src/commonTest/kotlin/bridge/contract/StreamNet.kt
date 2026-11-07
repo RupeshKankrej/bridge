@@ -2,12 +2,12 @@ package bridge.contract
 
 import bridge.files.FileTransfer
 import bridge.identity.fingerprint
+import bridge.port.ByteStream
 import bridge.port.FileSink
 import bridge.port.FileSource
 import bridge.port.FileStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.protocol.Platform
 import kotlinx.coroutines.CoroutineDispatcher
@@ -92,13 +92,16 @@ class Pipe(override val peerFingerprint: String?, override val remoteHost: Strin
         val (max, callback) = pending ?: return
         when {
             broken -> callback(null, "connection reset")
+
             inbox.isNotEmpty() -> {
                 val head = inbox.removeFirst()
                 if (head.size > max) inbox.addFirst(head.copyOfRange(max, head.size))
                 pending = null
                 return callback(head.copyOf(minOf(max, head.size)), null)
             }
+
             eof -> callback(ByteArray(0), null)
+
             else -> return
         }
         pending = null
@@ -186,11 +189,9 @@ class FilesNode(
     private var myId = ""
 
     private val streams = object : StreamPort {
-        override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (ByteStream) -> Unit) =
-            net.listen(host, port, myId, requireClientCertificate, onStream)
+        override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (ByteStream) -> Unit) = net.listen(host, port, myId, requireClientCertificate, onStream)
 
-        override fun dial(host: String, port: Int, callback: (ByteStream?, String?) -> Unit) =
-            net.connect(this@FilesNode.host, myId.takeIf { presentsCertificate }, host, port, callback)
+        override fun dial(host: String, port: Int, callback: (ByteStream?, String?) -> Unit) = net.connect(this@FilesNode.host, myId.takeIf { presentsCertificate }, host, port, callback)
     }
 
     private val multicast = object : MulticastPort {

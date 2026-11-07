@@ -1,13 +1,13 @@
 package bridge.interop
 
 import bridge.identity.fingerprint
+import bridge.port.ByteStream
 import bridge.port.FileSink
 import bridge.port.FileSource
 import bridge.port.FileStorePort
 import bridge.port.KeyStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.port.TrustedPeer
 import java.io.File
@@ -40,7 +40,11 @@ class JvmKeyStore : KeyStorePort {
 
     override fun generateKey(): ByteArray = keys.public.encoded
 
-    override fun sign(data: ByteArray): ByteArray = Signature.getInstance("SHA256withECDSA").run { initSign(keys.private); update(data); sign() }
+    override fun sign(data: ByteArray): ByteArray = Signature.getInstance("SHA256withECDSA").run {
+        initSign(keys.private)
+        update(data)
+        sign()
+    }
 
     override fun saveCertificate(certificate: ByteArray) {
         this.certificate = certificate
@@ -55,7 +59,10 @@ class JvmKeyStore : KeyStorePort {
     /** TLS 1.3 presenting our certificate; trusts any peer, like the apps (core pins fingerprints). */
     fun sslContext(): SSLContext {
         val cert = CertificateFactory.getInstance("X.509").generateCertificate(certificate!!.inputStream())
-        val ks = KeyStore.getInstance("PKCS12").apply { load(null); setKeyEntry("id", keys.private, CharArray(0), arrayOf(cert)) }
+        val ks = KeyStore.getInstance("PKCS12").apply {
+            load(null)
+            setKeyEntry("id", keys.private, CharArray(0), arrayOf(cert))
+        }
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(ks, CharArray(0)) }
         val anyone = object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
@@ -80,7 +87,12 @@ class JvmStreams(private val ssl: SSLContext) : StreamPort {
 
     override fun dial(host: String, port: Int, callback: (ByteStream?, String?) -> Unit) {
         pool.execute {
-            val s = runCatching { (ssl.socketFactory.createSocket() as SSLSocket).apply { connect(InetSocketAddress(host, port), 10_000); enabledProtocols = arrayOf("TLSv1.3") } }
+            val s = runCatching {
+                (ssl.socketFactory.createSocket() as SSLSocket).apply {
+                    connect(InetSocketAddress(host, port), 10_000)
+                    enabledProtocols = arrayOf("TLSv1.3")
+                }
+            }
             s.fold({ callback(SocketStream(it), null) }, { callback(null, it.message) })
         }
     }

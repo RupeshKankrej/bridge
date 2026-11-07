@@ -15,7 +15,7 @@
 				<string>Send with Bridge</string>
 			</dict>
 			<key>NSMessage</key>
-			<string>sendFiles</string>
+			<string>send</string>
 			<key>NSPortName</key>
 			<string>Bridge</string>
 			<key>NSRequiredContext</key>
@@ -24,19 +24,6 @@
 			<array>
 				<string>public.item</string>
 			</array>
-		</dict>
-		<dict>
-			<key>NSMenuItem</key>
-			<dict>
-				<key>default</key>
-				<string>Send to Tablet</string>
-			</dict>
-			<key>NSMessage</key>
-			<string>sendText</string>
-			<key>NSPortName</key>
-			<string>Bridge</string>
-			<key>NSRequiredContext</key>
-			<dict/>
 			<key>NSSendTypes</key>
 			<array>
 				<string>public.utf8-plain-text</string>

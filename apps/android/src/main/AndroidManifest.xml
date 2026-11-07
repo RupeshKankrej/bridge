@@ -26,8 +26,10 @@
 
     <application
         android:name=".BridgeApplication"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="Bridge"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.Bridge">
 
         <!-- Download the Play services QR scanner module at install time instead of on first scan. -->
         <meta-data
@@ -94,6 +96,17 @@
             android:exported="true"
             android:icon="@android:drawable/ic_menu_send"
             android:label="Send clipboard"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AirDropTile"
+            android:exported="true"
+            android:icon="@drawable/ic_airdrop"
+            android:label="AirDrop"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

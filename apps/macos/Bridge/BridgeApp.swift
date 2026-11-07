@@ -42,8 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         model.$state.sink { [weak self] state in self?.updateIcon(state) }.store(in: &subscriptions)
         model.onAttention = { [weak self] in self?.showPopover() }
         model.onOffer = { [weak self] offer in self?.notify(offer) }
+        model.onSettings = { [weak self] tab in self?.showSettings(tab) }
 
-        // Finder → Services → "Send with Bridge", and "Send to Tablet" for selected text and links (NSServices in Info.plist).
+        // Services → "Send with Bridge" for files, selected text and links (NSServices in Info.plist).
         services = ServicesProvider(model: model)
         NSApp.servicesProvider = services
         NSUpdateDynamicServices()
@@ -68,6 +69,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         guard let button = statusItem.button, !popover.isShown else { return }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    // MARK: Settings window
+
+    private var settingsWindow: NSWindow?
+
+    /// A plain window rather than SwiftUI's Settings scene, which a menu-bar-only app can't reliably bring to the front.
+    private func showSettings(_ tab: SettingsTab) {
+        popover.performClose(nil)
+        model.settingsTab = tab
+        if settingsWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model)))
+            window.title = "Bridge Settings"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: Incoming offers
@@ -122,23 +143,27 @@ private final class OfferPanel: NSPanel {
 
 func batteryText(_ b: BatteryState) -> String { "\(b.level)%" + (b.charging ? " ⚡︎" : "") }
 
-/// Target of the Services items. Their titles are fixed in Info.plist, so they can't name the device;
+/// Target of the one Services item, "Send with Bridge". Its title is fixed in Info.plist, so it can't name the device;
 /// for files the popover asks which device unless exactly one paired device is nearby; text goes to every connected one.
+/// One item, not separate file and text ones: Finder offers a file as a file URL and as text too, so a text-only
+/// item showed up for files as well and sent the file's path.
 final class ServicesProvider: NSObject {
     private let model: BridgeModel
 
     init(model: BridgeModel) { self.model = model }
 
-    @objc func sendFiles(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+    /// Files first (Finder also puts their paths on as text); otherwise selected text or a link opens on the tablet (F12).
+    @objc func send(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: .URL)
         // AppKit calls service handlers on the main thread.
-        MainActor.assumeIsolated { model.send(urls) }
-    }
-
-    /// "Send to Tablet": selected text, or a link (e.g. from a browser's address field), opens on the tablet (F12).
-    @objc func sendText(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
-        guard let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: .URL) else { return }
-        MainActor.assumeIsolated { model.share(text) }
+        MainActor.assumeIsolated {
+            if !urls.isEmpty {
+                model.send(urls)
+            } else if let text {
+                model.share(text)
+            }
+        }
     }
 }
 
@@ -154,6 +179,10 @@ final class BridgeModel: ObservableObject {
     var onAttention: () -> Void = {}
     /// Called when the pending offer changes (nil once answered or expired).
     var onOffer: (Offer?) -> Void = { _ in }
+    /// Opens the settings window on a tab.
+    var onSettings: (SettingsTab) -> Void = { _ in }
+    @Published var settingsTab: SettingsTab = .general
+    @Published private(set) var receiveFolder = MacFileStore.folder
     private let bridge: Bridge
     private let fileTransfer: FileTransfer
     private let activity: NSObjectProtocol
@@ -163,6 +192,7 @@ final class BridgeModel: ObservableObject {
     var isConnected: Bool { state?.paired.contains { $0.online } ?? false }
 
     init() {
+        CrashLog.install()
         let keyStore = MacKeyStore()
         let network = MacNetwork(identity: keyStore.tlsIdentity)
         let problems = PassthroughSubject<String?, Never>()
@@ -263,7 +293,7 @@ final class BridgeModel: ObservableObject {
         pendingSend = []
     }
 
-    /// Services "Send to Tablet". Offline: say so in the popover (spec §7) rather than dropping it silently.
+    /// Services "Send with Bridge" on text. Offline: say so in the popover (spec §7) rather than dropping it silently.
     func share(_ text: String) {
         guard isConnected else {
             problem = "The tablet isn't connected, so the text wasn't sent"
@@ -276,6 +306,7 @@ final class BridgeModel: ObservableObject {
     func refreshNearby() { fileTransfer.refresh() }
     func respond(offerId: String, accept: Bool) { fileTransfer.respond(offerId: offerId, accept: accept) }
     func cancel(_ transfer: Transfer) { fileTransfer.cancel(transferId: transfer.id) }
+    func clearTransfers() { fileTransfer.clearFinished() }
 
     func openPairing() {
         guard let ip = lanIPv4Address() else {
@@ -287,86 +318,20 @@ final class BridgeModel: ObservableObject {
     }
 
     func closePairing() { bridge.closePairing() }
+    func reconnect() { bridge.reconnect() }
+    func openSettings(_ tab: SettingsTab = .general) { onSettings(tab) }
+
+    /// nil goes back to ~/Downloads/Bridge.
+    func setReceiveFolder(_ url: URL?) {
+        MacFileStore.folder = url ?? MacFileStore.defaultFolder
+        receiveFolder = MacFileStore.folder
+    }
     func cancelPairing() { bridge.rejectPairing() }
     func forget(_ fingerprint: String) { bridge.unpair(fingerprint: fingerprint) }
 }
 
-struct MenuView: View {
-    @ObservedObject var model: BridgeModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let state = model.state {
-                ForEach(state.paired, id: \.fingerprint) { peer in
-                    HStack {
-                        Circle().fill(peer.online ? Color.green : Color.secondary).frame(width: 8, height: 8)
-                        Text("Paired with \(peer.name)")
-                        Spacer()
-                        if let battery = peer.battery { Text(batteryText(battery)).foregroundStyle(.secondary) }
-                        Button("Forget") { model.forget(peer.fingerprint) }
-                    }
-                }
-
-                if let pairing = state.pairing {
-                    Text("Confirm on \(pairing.peerName)").font(.headline)
-                    code(pairing.code)
-                    Button("Cancel") { model.cancelPairing() }
-                } else if let invite = state.invite {
-                    Text("Scan with Bridge on your tablet").font(.headline)
-                    if let image = qrImage(invite.toUri()) {
-                        Image(nsImage: image).interpolation(.none).resizable().frame(width: 220, height: 220)
-                    }
-                    code(invite.code)
-                    Button("Cancel") { model.closePairing() }
-                } else {
-                    Button("Pair a device…") { model.openPairing() }
-                }
-
-                FilesSection(model: model)
-
-                if let message = model.problem ?? state.message {
-                    Text(message).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
-                }
-
-                Divider()
-                Text("Nearby").font(.caption).foregroundStyle(.secondary)
-                if state.discovered.isEmpty {
-                    Text("No devices found").foregroundStyle(.secondary)
-                }
-                ForEach(state.discovered, id: \.id) { peer in
-                    Label(peer.name, systemImage: peer.platform == "android" ? "ipad.landscape" : "laptopcomputer")
-                }
-            }
-            Divider()
-            Toggle("Open at Login", isOn: Binding(get: { model.launchAtLogin == .enabled }, set: { model.setLaunchAtLogin($0) }))
-            if model.launchAtLogin == .requiresApproval {
-                // macOS blocked it (e.g. turned off under Login Items once); only the user can allow it there.
-                Button("Allow in Login Items…") { SMAppService.openSystemSettingsLoginItems() }
-            }
-            Button("Quit Bridge") { NSApp.terminate(nil) }
-        }
-        .padding()
-        .frame(width: 320)
-    }
-
-    private func code(_ code: String) -> some View {
-        Text(code).font(.system(size: 32, weight: .semibold, design: .monospaced))
-    }
-}
-
-private func qrImage(_ text: String) -> NSImage? {
-    let filter = CIFilter.qrCodeGenerator()
-    filter.message = Data(text.utf8)
-    filter.correctionLevel = "M"
-    guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)) else { return nil }
-    let rep = NSCIImageRep(ciImage: output)
-    let image = NSImage(size: rep.size)
-    image.addRepresentation(rep)
-    return image
-}
-
 /// First IPv4 address on a Wi-Fi/Ethernet interface (en*), skipping VPN tunnels and loopback.
-private func lanIPv4Address() -> String? {
+func lanIPv4Address() -> String? {
     var list: UnsafeMutablePointer<ifaddrs>?
     guard getifaddrs(&list) == 0, let first = list else { return nil }
     defer { freeifaddrs(list) }

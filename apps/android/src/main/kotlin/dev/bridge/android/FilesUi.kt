@@ -7,13 +7,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import bridge.files.Offer
@@ -35,36 +38,57 @@ import bridge.files.TransferStatus
 
 private val Accept = Color(0xFF2E7D32)
 private val Decline = Color(0xFFC62828)
-private val ACTIVE = setOf(TransferStatus.WAITING, TransferStatus.RUNNING, TransferStatus.PAUSED)
+val ACTIVE_TRANSFERS = setOf(TransferStatus.WAITING, TransferStatus.RUNNING, TransferStatus.PAUSED)
 
-/** Offer prompt, device picker for pending sends, and the transfer list. */
+/** Share sheet: offer prompt, device picker for the shared files, and the transfer list. */
 @Composable
 fun FilesPanel(app: BridgeApplication) {
-    val state by app.files.state.collectAsState()
+    OfferPrompt(app)
     val pending by app.pendingSend.collectAsState()
-
-    state.offer?.let { OfferDialog(it) { accept -> app.files.respond(it.id, accept) } }
-
     if (pending.isNotEmpty()) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Send ${pending.size} file${if (pending.size == 1) "" else "s"} to…", style = MaterialTheme.typography.titleMedium)
-                if (state.nearby.isEmpty()) Text("No LocalSend or Bridge devices found", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                state.nearby.forEach { peer ->
-                    Button(onClick = { app.sendPending(peer) }, Modifier.fillMaxWidth()) {
-                        Text(peer.alias + if (app.isPaired(peer)) " (paired)" else "")
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = app.files::refresh) { Text("Refresh") }
-                    TextButton(onClick = app::cancelPending) { Text("Cancel") }
-                }
-            }
+        Section("Send ${pending.size} file${if (pending.size == 1) "" else "s"} to") {
+            DeviceList(app)
+            TextButton(onClick = app::cancelPending, Modifier.padding(horizontal = 8.dp)) { Text("Cancel") }
         }
     }
+    TransferList(app)
+}
 
-    // Newest first; the list only grows within a run.
-    state.transfers.takeLast(10).reversed().forEach { TransferCard(it) { app.files.cancel(it.id) } }
+/** Accept / Decline for an incoming offer; shown over whichever screen is open. */
+@Composable
+fun OfferPrompt(app: BridgeApplication) {
+    val state by app.files.state.collectAsState()
+    state.offer?.let { OfferDialog(it) { accept -> app.files.respond(it.id, accept) } }
+}
+
+/** Nearby LocalSend and Bridge devices; a tap sends the selection there (LocalSend's Send tab). */
+@Composable
+fun DeviceList(app: BridgeApplication, enabled: Boolean = true) {
+    val state by app.files.state.collectAsState()
+    if (state.nearby.isEmpty()) {
+        SettingRow("No devices found", "Bridge on your Mac, or LocalSend on any device on this Wi-Fi", R.drawable.ic_refresh, onClick = app.files::refresh)
+    }
+    state.nearby.forEach { peer ->
+        val paired = app.isPaired(peer)
+        val icon = when (peer.deviceType) {
+            "desktop", "laptop", "web", "headless", "server" -> R.drawable.ic_laptop
+            else -> R.drawable.ic_tablet
+        }
+        SettingRow(
+            peer.alias,
+            if (paired) "Paired · ${peer.host}" else "LocalSend · ${peer.host}",
+            icon,
+            onClick = { if (enabled) app.sendPending(peer) },
+            trailing = { Icon(painterResource(R.drawable.ic_send), "Send", tint = MaterialTheme.colorScheme.primary) },
+        )
+    }
+}
+
+/** Newest first; the list only grows within a run. */
+@Composable
+fun TransferList(app: BridgeApplication, limit: Int = 10) {
+    val state by app.files.state.collectAsState()
+    state.transfers.takeLast(limit).reversed().forEach { TransferCard(it) { app.files.cancel(it.id) } }
 }
 
 @Composable
@@ -95,7 +119,7 @@ private fun TransferCard(transfer: Transfer, onCancel: () -> Unit) {
     fun bytes(n: Long) = Formatter.formatShortFileSize(context, n)
     val total = transfer.files.sumOf { it.size }
     val done = transfer.files.sumOf { it.done }
-    val active = transfer.status in ACTIVE
+    val active = transfer.status in ACTIVE_TRANSFERS
     var expanded by remember { mutableStateOf(false) }
     val summary = when (transfer.status) {
         TransferStatus.RUNNING -> "${bytes(done)} of ${bytes(total)} · ${bytes(transfer.bytesPerSecond)}/s"
@@ -106,10 +130,19 @@ private fun TransferCard(transfer: Transfer, onCancel: () -> Unit) {
         TransferStatus.CANCELLED -> "Cancelled"
         else -> "Failed"
     }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text((if (transfer.incoming) "↓ " else "↑ ") + transfer.peerName, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(
+                    painterResource(if (transfer.incoming) R.drawable.ic_download else R.drawable.ic_upload),
+                    if (transfer.incoming) "Received from" else "Sent to",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(transfer.peerName, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 Text(summary, style = MaterialTheme.typography.bodySmall)
                 if (active) TextButton(onClick = onCancel) { Text("Cancel") }
             }

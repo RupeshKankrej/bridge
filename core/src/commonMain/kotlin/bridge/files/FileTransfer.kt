@@ -2,12 +2,12 @@ package bridge.files
 
 import bridge.identity.Identity
 import bridge.identity.secureRandomBytes
+import bridge.port.ByteStream
 import bridge.port.FileSink
 import bridge.port.FileStorePort
 import bridge.port.KeyStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.protocol.Platform
 import kotlinx.coroutines.CancellationException
@@ -71,6 +71,8 @@ data class Transfer(
 data class TransferFile(val name: String, val size: Long, val done: Long = 0, val status: TransferStatus = TransferStatus.WAITING)
 
 enum class TransferStatus { WAITING, RUNNING, PAUSED, DONE, FAILED, CANCELLED, DECLINED }
+
+private val ACTIVE = setOf(TransferStatus.WAITING, TransferStatus.RUNNING, TransferStatus.PAUSED)
 
 data class Offer(val id: String, val senderName: String, val files: List<TransferFile>)
 
@@ -158,6 +160,11 @@ class FileTransfer internal constructor(
             outgoing[transferId]?.cancel()
             inbound?.takeIf { it.live.id == transferId }?.let { end(it, TransferStatus.CANCELLED) }
         }
+    }
+
+    /** "Clear" in the transfer list: drops finished, failed, cancelled and declined entries; running ones stay. */
+    fun clearFinished() {
+        scope.launch { _state.update { s -> s.copy(transfers = s.transfers.filter { it.status in ACTIVE }) } }
     }
 
     // ---- progress -------------------------------------------------------------------------------
@@ -490,7 +497,7 @@ class FileTransfer internal constructor(
     private suspend fun sendAll(l: Live, peer: LocalSendPeer, files: List<OutgoingFile>) {
         var sessionId: String? = null
         try {
-            val dtos = files.map { FileDto(newId(), it.path, it.size, it.mime) }
+            val dtos = files.map { FileDto(newId(), it.path, it.size, it.mime, preview = it.preview) }
             val body = json(PrepareUpload.serializer(), PrepareUpload(info(network = true), dtos.associateBy { it.id }))
             val (head, resp) = request(peer, "POST", "$API/prepare-upload", body, port = filesPort(peer))
             when (head.status) {
@@ -647,5 +654,4 @@ private fun tokensMatch(a: String, b: String) = a.length == b.length && a.indice
 
 private fun <T> json(serializer: kotlinx.serialization.KSerializer<T>, value: T) = localSendJson.encodeToString(serializer, value).encodeToByteArray()
 
-private fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, bytes: ByteArray): T? =
-    runCatching { localSendJson.decodeFromString(serializer, bytes.decodeToString()) }.getOrNull()
+private fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, bytes: ByteArray): T? = runCatching { localSendJson.decodeFromString(serializer, bytes.decodeToString()) }.getOrNull()

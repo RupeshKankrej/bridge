@@ -14,6 +14,9 @@ interface MediaPort {
      */
     fun watch(onState: ((MediaState) -> Unit)?) {}
 
-    /** Mac: run play / pause / next / prev / volume on the current player. */
-    fun command(command: MediaCommand) {}
+    /**
+     * Mac: run play / pause / next / prev / volume on the current player. Returns false if the OS refused (macOS: media
+     * keys need Accessibility), so the tablet hears why nothing happened.
+     */
+    fun command(command: MediaCommand): Boolean = false
 }

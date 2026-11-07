@@ -185,7 +185,14 @@ private func ipString(_ host: NWEndpoint.Host) -> String {
 /// FileStorePort: `~/Downloads/Bridge`. Writes to a hidden temporary file next to the target and
 /// moves it into place, under a free name, only when the transfer completes.
 final class MacFileStore: NSObject, FileStorePort {
-    static let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].appendingPathComponent("Bridge")
+    static let defaultFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].appendingPathComponent("Bridge")
+    private static let key = "receiveFolder"
+
+    /// Settings → Receive folder (spec §7); read per file, so a change applies to the next transfer. Not sandboxed, so a path is enough.
+    static var folder: URL {
+        get { UserDefaults.standard.string(forKey: key).map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultFolder }
+        set { UserDefaults.standard.set(newValue == defaultFolder ? nil : newValue.path, forKey: key) }
+    }
 
     func create(path: String) throws -> FileSink {
         let root = Self.folder.standardizedFileURL
@@ -243,6 +250,7 @@ final class MacOutgoingFile: NSObject, OutgoingFile {
     let path: String
     let size: Int64
     let mime: String
+    let preview: String? = nil // files only; text messages are a tablet feature
 
     private init(url: URL, path: String, size: Int64) {
         self.url = url

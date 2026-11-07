@@ -36,6 +36,12 @@ class AndroidClipboard(private val context: Context) : ClipboardPort {
         return true
     }
 
+    /** Send screen's Paste: the clipboard's text, whoever copied it. Needs window focus; null if not text. */
+    fun readText(): String? {
+        val clip = manager.primaryClip?.takeIf { it.description.hasMimeType("text/*") && it.itemCount > 0 } ?: return null
+        return clip.getItemAt(0).coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() }
+    }
+
     /** Listen for copies while an activity is in front; the listener can't read the clipboard otherwise. */
     fun setForeground(foreground: Boolean) {
         if (foreground) manager.addPrimaryClipChangedListener(listener) else manager.removePrimaryClipChangedListener(listener)

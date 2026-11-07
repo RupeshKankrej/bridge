@@ -133,16 +133,21 @@ internal class HttpStream(val stream: ByteStream) {
         }
         val all = ByteArray(total)
         var at = 0
-        out.forEach { it.copyInto(all, at); at += it.size }
+        out.forEach {
+            it.copyInto(all, at)
+            at += it.size
+        }
         return all
     }
 
     suspend fun writeHead(start: String, headers: Map<String, String>) {
-        stream.writeAll(buildString {
-            append(start).append("\r\n")
-            headers.forEach { (k, v) -> append(k).append(": ").append(v).append("\r\n") }
-            append("\r\n")
-        }.encodeToByteArray())
+        stream.writeAll(
+            buildString {
+                append(start).append("\r\n")
+                headers.forEach { (k, v) -> append(k).append(": ").append(v).append("\r\n") }
+                append("\r\n")
+            }.encodeToByteArray(),
+        )
     }
 
     suspend fun respond(status: Int, body: ByteArray = ByteArray(0), headers: Map<String, String> = emptyMap(), close: Boolean = false) {
@@ -167,10 +172,12 @@ private fun decode(s: String): String {
         val c = s[i]
         when {
             c == '+' -> out += ' '.code.toByte()
+
             c == '%' && i + 2 < s.length && s.substring(i + 1, i + 3).toIntOrNull(16) != null -> {
                 out += s.substring(i + 1, i + 3).toInt(16).toByte()
                 i += 2
             }
+
             else -> out += c.toString().encodeToByteArray().toList()
         }
         i++
@@ -182,5 +189,5 @@ internal fun encodeQuery(params: Map<String, String>) = params.entries.joinToStr
 
 private fun encode(s: String) = s.encodeToByteArray().joinToString("") { b ->
     val c = b.toInt().toChar()
-    if (c.isLetterOrDigit() && b >= 0 || c in "-._~") "$c" else "%" + (b.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase()
+    if ((c.isLetterOrDigit() && b >= 0) || c in "-._~") "$c" else "%" + (b.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase()
 }

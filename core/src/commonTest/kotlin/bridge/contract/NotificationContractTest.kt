@@ -95,7 +95,6 @@ class NotificationContractTest {
         assertEquals(listOf("next"), p.mac.notifications.shown.map { it.first.key })
         assertEquals("invalid_message", replies.errors().single().code)
     }
-
 }
 
 /** A connection to the Mac presenting [fingerprint], driven by hand; returns it and the text frames it receives. */

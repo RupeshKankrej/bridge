@@ -18,8 +18,13 @@ struct FilesSection: View {
                 Button("Send files…") { chooseFiles() }
                 Button { NSWorkspace.shared.open(receiveFolder()) } label: { Image(systemName: "folder") }
                     .help("Open \(MacFileStore.folder.path)")
+                // Running transfers stay; only finished, failed and cancelled ones go.
+                if files.transfers.contains(where: { ![TransferStatus.waiting, .running, .paused].contains($0.status) }) {
+                    Button { model.clearTransfers() } label: { Image(systemName: "trash") }
+                        .help("Clear finished transfers")
+                }
             }
-            // Newest first; the list only grows within a run.
+            // Newest first.
             ForEach(files.transfers.suffix(5).reversed(), id: \.id) { TransferRow(transfer: $0, model: model) }
         }
     }

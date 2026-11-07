@@ -2,6 +2,9 @@
 
 ## Automated
 - `./gradlew :core:allTests` — codec round-trips, session state machine, pairing, LocalSend parsing, contract tests over localhost. Run before every commit.
+- ktlint 1.8.0 (style in `.editorconfig`: Kotlin official conventions, Compose names allowed). Not wired into Gradle yet
+  (that would be a new dependency, spec §8): `java -jar ktlint-cli-1.8.0-all.jar "core/src/**/*.kt" "apps/android/src/**/*.kt"`
+  with the jar from Maven Central (`com.pinterest.ktlint:ktlint-cli:1.8.0:all`); add `-F` to fix.
 - `./gradlew :core:localSendInteropTest` — runs `core` with JDK TLS adapters as "Bridge interop" on port 53321 (paired port 53323) and exchanges
   files with the official LocalSend app on any device on the same Wi-Fi: send it any file from LocalSend, then accept
   `interop.bin` (20 MB) in LocalSend. Waits up to 3 minutes for each step. Received files land in `core/build/interop/`.
@@ -129,7 +132,7 @@ Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app
 On the tablet turn on the three switches under "Media, battery and links".
 A re-signed dev build can lose its **Local Network** grant: the Mac listens but the tablet says "Can't reach …:53318"
 (and its Accessibility grant, see M2.2). Allow the prompt, or turn Bridge off and on again in
-System Settings → Privacy & Security → Local Network. If Services → Send to Tablet is missing, tick it under Keyboard →
+System Settings → Privacy & Security → Local Network. If Services → Send with Bridge is missing, tick it under Keyboard →
 Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreServices/pbs -flush`.
 - [ ] Tablet home open: the card says "Controls whatever is playing on <Mac>" with ⏮ ⏯ ⏭ and a volume slider at the Mac's volume
 - [ ] YouTube playing in the Mac's browser: ⏯ pauses within ~300 ms, again plays. ⏭ / ⏮ skip in a playlist
@@ -140,13 +143,49 @@ Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreService
 - [ ] **Gate (failed, accepted 2026-11-07; STATUS known issues):** play/pause YouTube (or whatever plays) on the Mac from the tablet (was Spotify; changed by agreement, ADR 0011)
 - [x] **Gate:** Chrome on the tablet → Share → Bridge → the page opens in the Mac's default browser; a toast says "Sent to <Mac>"
 - [x] Share plain text (e.g. from Keep) → it's on the Mac's clipboard with a "Text from your tablet" notice
-- [x] Mac: select text in Safari → right-click → Services → Send to Tablet → a tablet notification; tap opens the share sheet.
+- [x] Mac: select text in Safari → right-click → Services → Send with Bridge → a tablet notification; tap opens the share sheet.
       Select a URL → the notification's tap opens it in the tablet's browser
-- [x] Links switch off on the tablet: Services → Send to Tablet makes the Mac menu say it's turned off there; Share → Bridge
+- [x] Links switch off on the tablet: Services → Send with Bridge makes the Mac menu say it's turned off there; Share → Bridge
       on the tablet toasts the switch's name
-- [x] Tablet offline: Services → Send to Tablet opens the popover with "The tablet isn't connected"
+- [x] Tablet offline: Services → Send with Bridge opens the popover with "The tablet isn't connected"
+
+## Mac signing (once per developer machine)
+Create `apps/macos/Local.xcconfig` (git-ignored) with `CODE_SIGN_IDENTITY = Apple Development` and `DEVELOPMENT_TEAM = <team>`
+(`security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject`, the OU). Without it the build is ad-hoc
+and every rebuild loses Accessibility, Local Network and Keychain grants. After switching, grant them one last time:
+remove Bridge from Accessibility with −, launch, re-add; Always Allow both Keychain prompts.
+
+## M2.4 gate (AirDrop visibility, receive folder)
+Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
+After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Network if the tablet can't reach :53318.
+- [ ] Pad 3 (no Wi-Fi Aware): Settings has no AirDrop section, the tile picker has no AirDrop tile, Diagnostics shows "AirDrop: Not supported"
+- [ ] (Only on a device with Wi-Fi Aware) Tablet Settings → AirDrop: three options; "Everyone for 10 minutes" says when it reverts; after 10 min it shows Bridge devices only
+- [ ] "Keep Everyone on" stays on after a force-stop and relaunch
+- [ ] Quick-settings tile "AirDrop" (add via the pencil): each tap cycles Off → Bridge devices only → Everyone; Settings follows
+- [ ] Tier A re-check: Quick Share visibility Everyone, Mac AirDrop Everyone: is the Pad 3 in the Mac's AirDrop sheet? (record the result in STATUS)
+- [ ] Tablet Settings → Receive folder → pick e.g. Documents/Inbox: a file from the Mac lands there, folders keep their structure;
+      "Use Download/Bridge again" goes back
+- [ ] Mac Settings → General → Receive folder → Change…: a file from the tablet lands there; Reset goes back to ~/Downloads/Bridge
+
+## M2.5 checks (diagnostics, crash log, redesign)
+- [ ] Finder → right-click a file: Services shows only "Send with Bridge", and it sends the file (not its path).
+      Selected text in Safari → Services → Send with Bridge: arrives on the tablet as before
+- [ ] Tablet: Home / Send / Settings rail; colours follow the wallpaper (change it: Bridge follows); dark mode follows the system
+- [ ] Tablet Send: File, Media (photo picker), Folder each add to the selection; × removes; tap the Mac → sent, appears in Recent transfers
+- [ ] Tablet Send → Text "hello" → Mac: a .txt with the text lands in the receive folder. → official LocalSend: shown as a message
+- [ ] Tablet Send → Paste: clipboard text is added as a text item
+- [ ] Clear finished transfers: tablet Home → Recent transfers → Clear; Mac popover → Files → trash icon. Running transfers stay
+- [ ] Tablet Settings → About → Diagnostics: Connected since, peer address (Mac IP), link quality with ms, last error; turn Mac
+      Wi-Fi off 1 min: shows Offline and "Lost …: …" as the last error; Reconnect now reconnects within 5 s of Wi-Fi back
+- [ ] Mac popover gear / Diagnostics…: same fields from the Mac's side (peer address = tablet IP)
+- [ ] Crash log: `adb shell am crash dev.bridge.android` is not a Kotlin exception, so instead check that "No crashes recorded" shows,
+      then after any real crash the trace appears with Copy / Clear. Mac: `~/Library/Logs/Bridge/crash.log`, and "macOS crash reports" opens DiagnosticReports
+- [ ] Daily use (the M2.5 gate): 14 consecutive days with no Forget, re-pair, typed address or app restart needed to reconnect.
+      Log any manual reconnect in STATUS with the Diagnostics' last error
 
 ## One-time device checks
-- [ ] Android version reported by the Pad 3 in Settings → About
-- [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)
+- [x] Android version reported by the Pad 3: Android 16, OxygenOS `OPD2415_16.0.10.600(EX01)` (2026-11-07, `adb shell getprop`)
+- [x] `FEATURE_WIFI_AWARE` on the Pad 3: **no** (2026-11-07: not in `pm list features`, no `wifiaware` system service).
+      Blocks both AirDrop tiers (spec §5.10). Re-check after every OxygenOS update:
+      `adb shell pm has-feature android.hardware.wifi.aware`. Disabled by OnePlus, not missing hardware: see STATUS known issues
 - [ ] `Presentation` display support on the Pad 3 (needed for F10)

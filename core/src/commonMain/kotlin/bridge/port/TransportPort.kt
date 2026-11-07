@@ -17,6 +17,9 @@ interface Connection {
     /** SHA-256 of the peer's DER certificate, lowercase hex. */
     val peerFingerprint: String
 
+    /** "host:port" of the other end, for the diagnostics screen; null if the platform can't tell. */
+    val remoteAddress: String? get() = null
+
     /** Starts delivering frames to [listener], including any that arrived before this call. */
     fun start(listener: ConnectionListener)
 

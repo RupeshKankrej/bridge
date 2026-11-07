@@ -26,9 +26,14 @@ data class Hello(
 
 @Serializable
 enum class Platform {
-    @SerialName("macos") MACOS,
-    @SerialName("android") ANDROID,
-    @SerialName("ios") IOS,
+    @SerialName("macos")
+    MACOS,
+
+    @SerialName("android")
+    ANDROID,
+
+    @SerialName("ios")
+    IOS,
 }
 
 @Serializable
@@ -133,8 +138,11 @@ const val MOD_COMMAND = 8
 /** One zoom step; the Mac maps it to ⌘= / ⌘− (ADR 0010). */
 @Serializable
 enum class InputGesture {
-    @SerialName("zoomIn") ZOOM_IN,
-    @SerialName("zoomOut") ZOOM_OUT,
+    @SerialName("zoomIn")
+    ZOOM_IN,
+
+    @SerialName("zoomOut")
+    ZOOM_OUT,
 }
 
 /**
@@ -181,17 +189,28 @@ data class MediaState(
 
 @Serializable
 enum class MediaAction {
-    @SerialName("play") PLAY,
-    @SerialName("pause") PAUSE,
-    @SerialName("next") NEXT,
-    @SerialName("prev") PREV,
+    @SerialName("play")
+    PLAY,
+
+    @SerialName("pause")
+    PAUSE,
+
+    @SerialName("next")
+    NEXT,
+
+    @SerialName("prev")
+    PREV,
 
     /** Set the player's volume to `media.command.volume`. */
-    @SerialName("volume") VOLUME,
+    @SerialName("volume")
+    VOLUME,
 
     /** Start / stop sending `media.state` to this peer; the Mac only polls players while someone watches (ADR 0011). */
-    @SerialName("watch") WATCH,
-    @SerialName("unwatch") UNWATCH,
+    @SerialName("watch")
+    WATCH,
+
+    @SerialName("unwatch")
+    UNWATCH,
 }
 
 /** Tablet → Mac: control the Mac's player. [volume] (0–100) only with [MediaAction.VOLUME]. */

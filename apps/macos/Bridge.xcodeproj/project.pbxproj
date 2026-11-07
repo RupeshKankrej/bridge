@@ -14,6 +14,7 @@
 		B0000000000000000000A001 /* Bridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0000000000000000000A002 /* BridgeCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = BridgeCore.xcframework; path = ../../core/build/XCFrameworks/debug/BridgeCore.xcframework; sourceTree = "<group>"; };
 		B0000000000000000000A00D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B0000000000000000000A016 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -37,6 +38,7 @@
 			children = (
 				B0000000000000000000A004 /* Bridge */,
 				B0000000000000000000A00D /* Info.plist */,
+				B0000000000000000000A016 /* Signing.xcconfig */,
 				B0000000000000000000A00A /* Frameworks */,
 				B0000000000000000000A00B /* Products */,
 			);
@@ -161,9 +163,10 @@
 		};
 		B0000000000000000000A014 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B0000000000000000000A016 /* Signing.xcconfig */;
 			buildSettings = {
 				ARCHS = arm64;
-				CODE_SIGN_IDENTITY = "-";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -179,9 +182,10 @@
 		};
 		B0000000000000000000A015 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B0000000000000000000A016 /* Signing.xcconfig */;
 			buildSettings = {
 				ARCHS = arm64;
-				CODE_SIGN_IDENTITY = "-";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;

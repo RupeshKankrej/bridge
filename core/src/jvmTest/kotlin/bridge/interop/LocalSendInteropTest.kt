@@ -25,7 +25,10 @@ import kotlin.time.Duration.Companion.minutes
  */
 class LocalSendInteropTest {
     private val port = System.getProperty("bridge.interopPort")?.toInt() ?: 53321
-    private val dir = File(System.getProperty("bridge.interopDir") ?: "build/interop").apply { deleteRecursively(); mkdirs() }
+    private val dir = File(System.getProperty("bridge.interopDir") ?: "build/interop").apply {
+        deleteRecursively()
+        mkdirs()
+    }
 
     @Test
     fun receiveFromAndSendToLocalSend() = runBlocking {
@@ -34,8 +37,7 @@ class LocalSendInteropTest {
         val streams = object : bridge.port.StreamPort {
             val real by lazy { JvmStreams(keyStore.sslContext()) }
 
-            override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (bridge.port.ByteStream) -> Unit) =
-                real.listen(port, requireClientCertificate, onStream)
+            override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (bridge.port.ByteStream) -> Unit) = real.listen(port, requireClientCertificate, onStream)
 
             override fun dial(host: String, port: Int, callback: (bridge.port.ByteStream?, String?) -> Unit) = real.dial(host, port, callback)
         }

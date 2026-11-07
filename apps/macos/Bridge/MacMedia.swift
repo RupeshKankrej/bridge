@@ -29,18 +29,20 @@ final class MacMedia: NSObject, MediaPort {
         report()
     }
 
-    func command(command: MediaCommand) {
+    /// False when Accessibility is missing; core then tells the tablet (M2.3's silent failure).
+    func command(command: MediaCommand) -> Bool {
         switch command.action {
         // The play key toggles; the Mac can't know which state the player is in, so play and pause send the same key.
-        case .play, .pause: _ = input.mediaKey(NX_KEYTYPE_PLAY)
+        case .play, .pause: return input.mediaKey(NX_KEYTYPE_PLAY)
         // FAST/REWIND, not NEXT/PREVIOUS: they're what Apple keyboards' F9/F7 send, so players treat them as next/prev.
-        case .next: _ = input.mediaKey(NX_KEYTYPE_FAST)
-        case .prev: _ = input.mediaKey(NX_KEYTYPE_REWIND)
+        case .next: return input.mediaKey(NX_KEYTYPE_FAST)
+        case .prev: return input.mediaKey(NX_KEYTYPE_REWIND)
         case .volume:
-            guard let volume = command.volume?.intValue else { return }
+            guard let volume = command.volume?.intValue else { return true }
             run("set volume output volume \(volume)")
             report() // the slider settles on the real value now (spec §7: feedback within 300 ms)
-        default: return
+            return true
+        default: return true
         }
     }
 

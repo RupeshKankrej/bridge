@@ -73,22 +73,23 @@ private object NoDelaySockets : SocketFactory() {
 
     override fun createSocket(host: String, port: Int): Socket = base.createSocket(host, port).noDelay()
 
-    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
-        base.createSocket(host, port, localHost, localPort).noDelay()
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket = base.createSocket(host, port, localHost, localPort).noDelay()
 
     override fun createSocket(host: InetAddress, port: Int): Socket = base.createSocket(host, port).noDelay()
 
-    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
-        base.createSocket(address, port, localAddress, localPort).noDelay()
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket = base.createSocket(address, port, localAddress, localPort).noDelay()
 }
 
-private class OkConnection(private var callback: ((Connection?, String?) -> Unit)?) : WebSocketListener(), Connection {
+private class OkConnection(private var callback: ((Connection?, String?) -> Unit)?) :
+    WebSocketListener(),
+    Connection {
     private val lock = Any()
     private lateinit var socket: WebSocket
 
     @Volatile
     var peerCertificate: ByteArray? = null
     private var listener: ConnectionListener? = null
+
     /** Frames that arrived before [start], in order: String for text, ByteString for binary. */
     private val pending = mutableListOf<Any>()
     private var closedReason: String? = null
@@ -114,8 +115,7 @@ private class OkConnection(private var callback: ((Connection?, String?) -> Unit
         Unit
     }
 
-    private fun deliver(listener: ConnectionListener, frame: Any) =
-        if (frame is ByteString) listener.onBinary(frame.toByteArray()) else listener.onText(frame as String)
+    private fun deliver(listener: ConnectionListener, frame: Any) = if (frame is ByteString) listener.onBinary(frame.toByteArray()) else listener.onText(frame as String)
 
     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
         webSocket.close(code, null)

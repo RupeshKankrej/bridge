@@ -9,8 +9,8 @@ import bridge.protocol.Envelope
 import bridge.protocol.Hello
 import bridge.protocol.PROTOCOL_VERSION
 import bridge.protocol.Ping
-import bridge.protocol.ProtocolError
 import bridge.protocol.Platform
+import bridge.protocol.ProtocolError
 import bridge.session.CLOSE_POLICY
 import bridge.session.CLOSE_VERSION_MISMATCH
 import bridge.session.CONTROL_PORT
@@ -35,8 +35,8 @@ class SessionContractTest {
         advanceTimeBy(10.minutes)
         assertTrue(online(p.mac) && online(p.tab))
         assertEquals(attempts, p.lan.connectAttempts.size, "never reconnected")
-        // Both sides ping every 15 s: at 15 s … 585 s, 39 each.
-        assertEquals(78, p.lan.sent.count { Codec.decode(it).getOrThrow().message == Ping })
+        // Both sides ping every 15 s: at 15 s … 585 s, 39 each, plus one each right after pairing (round trip for diagnostics).
+        assertEquals(80, p.lan.sent.count { Codec.decode(it).getOrThrow().message == Ping })
     }
 
     @Test
@@ -48,11 +48,19 @@ class SessionContractTest {
         assertTrue(online(p.mac) && online(p.tab), "three pings out, not yet dropped")
         advanceTimeBy(16.seconds)
         assertTrue(!online(p.mac) && !online(p.tab), "dropped at the 4th tick (60 s)")
+        // Diagnostics keep why the link went, without the user-facing banner (the Mac never dials, so nothing newer).
+        assertEquals("Lost Pad 3: heartbeat timeout", p.mac.state.lastError)
+        assertEquals(null, p.mac.state.message)
 
         p.lan.partitioned = false
         advanceTimeBy(MAX_WAIT)
         assertTrue(online(p.mac) && online(p.tab))
         assertEquals(1, p.mac.keyStore.peers.size)
+        // The redial knows where it went; both sides timed a ping on the new connection.
+        val mac = p.tab.state.paired.single()
+        assertTrue(mac.address!!.startsWith("${p.mac.host}:"), mac.address)
+        assertTrue(mac.rttMs != null && mac.connectedAt > 0)
+        assertTrue(p.mac.state.paired.single().rttMs != null)
     }
 
     @Test

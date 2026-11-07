@@ -91,6 +91,11 @@ final class MacNetwork: NSObject, TransportPort, DiscoveryPort {
 /// peer's certificate is known. Mutable state is touched only on `queue`.
 final class MacConnection: NSObject, Connection {
     let peerFingerprint: String
+    /// For the diagnostics view. Swift must implement it: Kotlin interface defaults don't reach Objective-C protocols.
+    var remoteAddress: String? {
+        if case let .hostPort(host, port) = connection.endpoint { return "\(host):\(port)" }
+        return nil
+    }
     private let connection: NWConnection
     private let queue: DispatchQueue
     private var listener: ConnectionListener?

@@ -1,6 +1,8 @@
 package dev.bridge.android
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import bridge.files.FileTransfer
@@ -16,6 +18,18 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Owns the single core [Bridge] and [FileTransfer]; [BridgeService] keeps the process alive, activities observe them. */
 class BridgeApplication : Application() {
+    /** AirDrop (spec §5.10) needs Wi-Fi Aware; some firmware turns it off (the Pad 3's does). */
+    val airDropSupported by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE) }
+
+    override fun onCreate() {
+        super.onCreate()
+        CrashLog.install(this)
+        // Without Wi-Fi Aware the AirDrop tile would do nothing, so it isn't offered in the tile picker at all.
+        // Checked every launch: an OS update can add the feature.
+        val state = if (airDropSupported) PackageManager.COMPONENT_ENABLED_STATE_DEFAULT else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        packageManager.setComponentEnabledSetting(ComponentName(this, AirDropTile::class.java), state, PackageManager.DONT_KILL_APP)
+    }
+
     val clipboard by lazy { AndroidClipboard(this) }
     val notifications by lazy { AndroidNotifications(this) }
     val features by lazy { Features(this) }
@@ -44,7 +58,7 @@ class BridgeApplication : Application() {
     val files: FileTransfer by lazy {
         bridge
         val streams = AndroidStreams(keyStore) { _filesProblem.value = it }
-        FileTransfer(deviceName, Platform.ANDROID, Build.MODEL, keyStore, streams, AndroidMulticast(this), MediaStoreFileStore(contentResolver))
+        FileTransfer(deviceName, Platform.ANDROID, Build.MODEL, keyStore, streams, AndroidMulticast(this), MediaStoreFileStore(contentResolver) { features.receiveFolder.value })
     }
 
     private val _filesProblem = MutableStateFlow<String?>(null)
@@ -73,5 +87,14 @@ class BridgeApplication : Application() {
 
     fun cancelPending() {
         _pendingSend.value = emptyList()
+    }
+
+    /** Send screen: add to the selection without sending; the user then picks a device. */
+    fun select(more: List<OutgoingFile>) {
+        _pendingSend.value += more
+    }
+
+    fun unselect(file: OutgoingFile) {
+        _pendingSend.value -= file
     }
 }

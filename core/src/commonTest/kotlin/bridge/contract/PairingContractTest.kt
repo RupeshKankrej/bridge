@@ -77,8 +77,10 @@ class PairingContractTest {
 
         p.tab.bridge.confirmPairing()
         runCurrent()
-        assertEquals(listOf(PeerStatus(p.mac.id, "MacBook", online = true, host = p.mac.host)), p.tab.state.paired)
-        assertEquals(listOf(PeerStatus(p.tab.id, "Pad 3", online = true)), p.mac.state.paired)
+        // Diagnostics fields (connection time, round trip) vary; compared without them.
+        fun core(peers: List<PeerStatus>) = peers.map { it.copy(connectedAt = 0, rttMs = null) }
+        assertEquals(listOf(PeerStatus(p.mac.id, "MacBook", online = true, host = p.mac.host)), core(p.tab.state.paired))
+        assertEquals(listOf(PeerStatus(p.tab.id, "Pad 3", online = true)), core(p.mac.state.paired))
         assertNull(p.mac.state.pairing)
         assertNull(p.tab.state.pairing)
         assertNull(p.mac.state.invite, "QR disappears once paired")

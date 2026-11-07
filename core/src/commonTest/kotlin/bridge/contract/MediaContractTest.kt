@@ -107,6 +107,19 @@ class MediaContractTest {
     }
 
     @Test
+    fun aRefusedCommandTellsTheTabletWhy() = runTest {
+        val p = watching()
+        p.mac.media.allowed = false
+        p.tab.bridge.media(MediaAction.PLAY)
+        runCurrent()
+        assertTrue(p.tab.state.message!!.contains("Accessibility"), p.tab.state.message)
+        p.mac.media.allowed = true
+        p.tab.bridge.media(MediaAction.PLAY)
+        runCurrent()
+        assertEquals(listOf(MediaCommand(MediaAction.PLAY)), p.mac.media.commands)
+    }
+
+    @Test
     fun batteryShowsOnTheMacAndIsResentOnReconnect() = runTest {
         val p = twoDevices()
         pairUp(p)

@@ -171,11 +171,19 @@ private suspend fun PointerInputScope.trackpad(bridge: Bridge) = awaitEachGestur
             if (twoFinger == null && (travel > slop || spread > slop)) twoFinger = travel >= spread
             when (twoFinger) {
                 true -> bridge.pointer(0.0, 0.0, (pan.x * SCROLL_GAIN / density).toDouble(), (pan.y * SCROLL_GAIN / density).toDouble())
+
                 false -> {
                     zoom *= event.calculateZoom()
-                    while (zoom > ZOOM_STEP) { bridge.zoom(InputGesture.ZOOM_IN); zoom /= ZOOM_STEP }
-                    while (zoom < 1 / ZOOM_STEP) { bridge.zoom(InputGesture.ZOOM_OUT); zoom *= ZOOM_STEP }
+                    while (zoom > ZOOM_STEP) {
+                        bridge.zoom(InputGesture.ZOOM_IN)
+                        zoom /= ZOOM_STEP
+                    }
+                    while (zoom < 1 / ZOOM_STEP) {
+                        bridge.zoom(InputGesture.ZOOM_OUT)
+                        zoom *= ZOOM_STEP
+                    }
                 }
+
                 null -> {}
             }
         }
