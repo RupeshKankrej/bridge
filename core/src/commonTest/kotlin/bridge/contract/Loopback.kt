@@ -6,11 +6,14 @@ import bridge.port.Connection
 import bridge.port.ConnectionListener
 import bridge.port.DiscoveredPeer
 import bridge.port.DiscoveryPort
+import bridge.port.InputPort
 import bridge.port.KeyStorePort
 import bridge.port.NotificationEvents
 import bridge.port.NotificationPort
 import bridge.port.TransportPort
 import bridge.port.TrustedPeer
+import bridge.protocol.InputKey
+import bridge.protocol.InputPointer
 import bridge.protocol.NotifPosted
 import bridge.protocol.Platform
 import bridge.session.Bridge
@@ -213,6 +216,16 @@ class FakeNotifications : NotificationPort {
     }
 }
 
+/** Records injected input; [allowed] = false is the Mac without the Accessibility permission. */
+class FakeInput : InputPort {
+    var allowed = true
+    val received = mutableListOf<Any>()
+
+    override fun pointer(event: InputPointer) = allowed.also { if (it) received += event }
+
+    override fun key(event: InputKey) = allowed.also { if (it) received += event }
+}
+
 class Device(val lan: Lan, val host: String, name: String, platform: Platform, scope: CoroutineScope) {
     val keyStore = FakeKeyStore()
     private val myFingerprint by lazy { fingerprint(keyStore.loadCertificate()!!) }
@@ -235,7 +248,8 @@ class Device(val lan: Lan, val host: String, name: String, platform: Platform, s
 
     val clipboard = FakeClipboard()
     val notifications = FakeNotifications()
-    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, notifications, scope)
+    val input = FakeInput()
+    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, notifications, input, scope)
     val id get() = bridge.state.value.deviceId
     val state get() = bridge.state.value
 }

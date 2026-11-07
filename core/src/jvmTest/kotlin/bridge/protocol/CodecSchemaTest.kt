@@ -64,6 +64,11 @@ class CodecSchemaTest {
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RQ", ts = 1_762_440_022_000, message = NotifDismissed("0|com.whatsapp|1|chat|10123")),
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RR", ts = 1_762_440_023_000, message = NotifAction("0|com.whatsapp|1|chat|10123", 1)),
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RS", ts = 1_762_440_024_000, message = NotifReply("0|com.whatsapp|1|chat|10123", "On my way")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RT", ts = 1_762_440_025_000, message = InputPointer(dx = 12.5, dy = -3.25, buttons = BUTTON_LEFT)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RV", ts = 1_762_440_025_008, message = InputPointer(scrollX = -1.5, scrollY = 40.0)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RW", ts = 1_762_440_025_016, message = InputPointer(gesture = InputGesture.ZOOM_OUT)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RX", ts = 1_762_440_026_000, message = InputKey(keyCode = MacKey.forChar('c')!!.first, modifiers = MOD_COMMAND or MOD_SHIFT)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RY", ts = 1_762_440_026_100, message = InputKey(text = "naïve 🙂")),
     )
 
     @Test
