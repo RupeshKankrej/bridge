@@ -50,19 +50,22 @@ private fun FeatureSwitch(label: String, toggle: Features.Toggle) {
     }
 }
 
-/** Now playing on the Mac with play/pause, previous, next and volume (spec §5.6). */
+/**
+ * Media keys for whatever plays on the Mac, and its volume (spec §5.6). The Mac sends media keys, so it can't say what's
+ * playing (ADR 0011); title, artist and progress show only if a peer ever reports them.
+ */
 @Composable
 fun MediaCard(bridge: Bridge, peer: PeerStatus) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val m = peer.media
-            val title = m?.title
-            if (m == null || title == null) {
-                Text(if (m == null) "Asking ${peer.name} what's playing…" else "Nothing playing in Music or Spotify on ${peer.name}")
-                return@Column
+            val m = peer.media ?: return@Column Text("Connecting to ${peer.name}'s media keys…")
+            val title = m.title
+            if (title == null) {
+                Text("Controls whatever is playing on ${peer.name}", style = MaterialTheme.typography.titleMedium)
+            } else {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(listOfNotNull(m.artist, m.app).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             }
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(listOfNotNull(m.artist, m.app).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
 
             val position = m.position
             val duration = m.duration
@@ -81,10 +84,16 @@ fun MediaCard(bridge: Bridge, peer: PeerStatus) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { bridge.media(MediaAction.PREV) }, Modifier.semantics { contentDescription = "Previous" }) { Text("⏮") }
+                // Without a title the play state is unknown: one toggle, like the keyboard's ⏯ key.
+                val label = when {
+                    title == null -> "Play or pause" to "⏯"
+                    m.playing -> "Pause" to "⏸"
+                    else -> "Play" to "▶"
+                }
                 FilledIconButton(
                     onClick = { bridge.media(if (m.playing) MediaAction.PAUSE else MediaAction.PLAY) },
-                    Modifier.semantics { contentDescription = if (m.playing) "Pause" else "Play" },
-                ) { Text(if (m.playing) "⏸" else "▶") }
+                    Modifier.semantics { contentDescription = label.first },
+                ) { Text(label.second) }
                 IconButton(onClick = { bridge.media(MediaAction.NEXT) }, Modifier.semantics { contentDescription = "Next" }) { Text("⏭") }
             }
 

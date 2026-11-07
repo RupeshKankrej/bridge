@@ -44,8 +44,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Bridge reads what Spotify or Music is playing and plays, pauses or skips when you tap the controls on your tablet.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_bridge._tcp</string>

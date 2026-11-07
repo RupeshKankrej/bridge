@@ -153,7 +153,7 @@ Binary payloads (clipboard images, thumbnails) are sent as a WebSocket binary fr
 | notif.action / notif.reply | Mac → tablet | key, actionIndex (into notif.posted actions[]) or replyText | 2 |
 | input.pointer | tablet → Mac | dx, dy (Mac points), buttons (held: 1 left, 2 right), scrollX, scrollY (pixels, content direction), gesture (zoomIn / zoomOut) | 2 |
 | input.key | tablet → Mac | keyCode (macOS virtual key code) + modifiers (1 ⇧, 2 ⌃, 4 ⌥, 8 ⌘), or text | 2 |
-| media.state | Mac → tablet | app, title, artist, playing, position, duration (seconds), volume (0–100); all empty = nothing playing | 2 |
+| media.state | Mac → tablet | volume (0–100, system output); optional app, title, artist, playing, position, duration (seconds) for a sender that knows them | 2 |
 | media.command | tablet → Mac | action: play, pause, next, prev, volume (+ volume 0–100), watch / unwatch (start / stop media.state) | 2 |
 | battery.state | tablet → Mac | level (percent), charging (charger connected) | 2 |
 | share.text | both | text or url (http/https only), exactly one; error `share_off` if receiving is turned off | 2 |
@@ -235,12 +235,14 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
 
 ### 5.6 Media controls and battery (F7)
 
-- Mac reads now-playing from Spotify and Music via AppleScript (Automation permission, asked at first use) and sends
-  `media.state`; tablet shows a controller card on its home screen and sends `media.command`. `MediaRemote` is not used:
-  it's a private framework (hard rule 7) and macOS 15.4+ no longer gives its now-playing data to non-Apple apps (ADR 0011).
-- The Mac polls its players once a second only while a tablet watches: the tablet sends `media.command` watch while
-  Bridge is on screen there with media controls on, and unwatch when it leaves. Position ticks aren't sent; the tablet
-  advances the position itself and the Mac sends again on any other change or a seek (> 2 s off).
+- Tablet shows a controller card on its home screen and sends `media.command`. The Mac turns play/pause, next and prev
+  into the keyboard's media keys, so they reach whatever is playing (browser, Spotify, Music, VLC); it needs the
+  Accessibility permission shared with remote input. Volume is the Mac's system output volume. The Mac can't say what's
+  playing: `MediaRemote` is a private framework (hard rule 7) and macOS 15.4+ only gives its data to Apple apps, so the
+  card shows controls and volume without a title (ADR 0011).
+- The Mac reports the volume once a second only while a tablet watches: the tablet sends `media.command` watch while
+  Bridge is on screen there with media controls on, and unwatch when it leaves. Unchanged states aren't resent; for a
+  sender that reports a position, ticks aren't sent either, the receiver advances it, and a seek (> 2 s off) is.
 - Tablet sends `battery.state` on connect, every 5 minutes and on charger change while battery reporting is on; Mac menu
   bar shows the tablet's level next to the icon.
 - Share (F12): tablet share-sheet target for text and links ("Bridge"), Mac Services item "Send to Tablet" for selected

@@ -63,6 +63,19 @@ final class MacInput: NSObject, InputPort {
 
     // MARK: Events
 
+    /// One press and release of a media key ([key] is an `NX_KEYTYPE_*`), as the keyboard sends it: a system-defined
+    /// event, subtype 8, with the key in the high 16 bits of data1 and 0xA (down) / 0xB (up) in the next byte.
+    func mediaKey(_ key: Int32) -> Bool {
+        guard mayPost() else { return false }
+        for state in [0xA, 0xB] {
+            let event = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(state << 8)),
+                                           timestamp: 0, windowNumber: 0, context: nil, subtype: 8,
+                                           data1: Int(key) << 16 | state << 8, data2: -1)
+            event?.cgEvent?.post(tap: .cghidEventTap)
+        }
+        return true
+    }
+
     private func press(_ button: CGMouseButton, bit: Int32, held: Int32, at: CGPoint, down: CGEventType, up: CGEventType) {
         guard (held ^ buttons) & bit != 0 else { return }
         let pressing = held & bit != 0

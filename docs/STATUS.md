@@ -37,7 +37,7 @@
 
 - M2.3 — Media controls, battery, share-to-device (ADR 0011): **built, device gate pending** (docs/testing.md, M2.3 gate).
   `core`: `media.state`/`media.command` (with watch/unwatch), `battery.state`, `share.text`, `MediaPort`, `SharePort`.
-  Mac: AppleScript for Spotify and Music (no MediaRemote, by agreement), tablet battery beside the menu-bar icon,
+  Mac: media keys for whatever plays plus system volume (no MediaRemote, no player AppleScript, by agreement), tablet battery beside the menu-bar icon,
   Services "Send to Tablet". Android: media card on the home screen, battery every 5 min and on charger change, text and
   link share target, links/text from the Mac as notifications; three switches, off by default.
 
@@ -55,7 +55,8 @@
 
 ## Log
 - 2026-11-07 — M2.3 share checks passed on the devices (link Chrome → Mac browser, text both ways, switch off, offline).
-  Media and battery checks still to run. The re-signed Mac build needed its Local Network grant renewed (docs/testing.md).
+  Battery checks passed too. Media switched from Spotify/Music AppleScript to media keys (Rupesh uses neither app);
+  the gate is now play/pause of whatever plays, still to run. The re-signed Mac build needed its Local Network grant renewed (docs/testing.md).
 - 2026-11-07 — M2.3 built, device gate pending. MediaRemote dropped for AppleScript only (hard rule 7; macOS 15.4+ blocks
   it for non-Apple apps anyway). See ADR 0011.
 - 2026-11-07 — M2.1 device gate passed (all 8 checks). M2.1 done; next M2.2.
