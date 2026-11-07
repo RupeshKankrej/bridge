@@ -34,6 +34,9 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M2.1 built, device gate pending (docs/testing.md, M2.1 gate). `core`: `notif.posted/dismissed/action/reply`,
+  `NotificationPort`, binary frames on the control channel (ADR 0009). Android `NotificationListenerService` with an
+  on/off switch and per-app list; Mac `UNUserNotificationCenter` with action buttons, inline reply and dismiss sync.
 - 2026-11-07 — M1.5 device gate passed, including sleep/wake, 30 min screen off, Wi-Fi switch, watchdog restart and typed
   address. Phase 1 done; tagged v0.1.0. Phase 2 starts with M2.1.
 - 2026-11-07 — M1.5 built, device gate pending (docs/testing.md, M1.5 gate). `core`: `reconnect()` (dial now + 5 s ping probe),

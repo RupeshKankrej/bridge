@@ -148,9 +148,9 @@ Binary payloads (clipboard images, thumbnails) are sent as a WebSocket binary fr
 | clipboard.set | both | mime, text or binaryLength, sourceApp | 1 |
 | clipboard.request | both | none; asks the peer to resend current clipboard | 1 |
 | file.offer | both | sessionId, files[] summary; points at the HTTPS file API | 1 |
-| notif.posted | tablet → Mac | key, app, title, text, icon (binary), actions[], replyable | 2 |
+| notif.posted | tablet → Mac | key, app, title, text, icon (binary, image/png ≤ 64 KiB), actions[] (titles of actions without a RemoteInput), replyable | 2 |
 | notif.dismissed | both | key | 2 |
-| notif.action / notif.reply | Mac → tablet | key, actionIndex or replyText | 2 |
+| notif.action / notif.reply | Mac → tablet | key, actionIndex (into notif.posted actions[]) or replyText | 2 |
 | input.pointer | tablet → Mac | dx, dy, buttons, scrollX, scrollY, gesture | 2 |
 | input.key | tablet → Mac | keyCode, modifiers, text | 2 |
 | media.state / media.command | both | title, artist, playing, position; play, pause, next, prev, volume | 2 |
@@ -218,7 +218,9 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
 - Tablet `NotificationListenerService` forwards new notifications (`notif.posted`) with app name, icon (32 px PNG), title, text, actions, and whether a `RemoteInput` exists.
 - Mac shows them via `UNUserNotificationCenter` grouped by app. Clicking an action sends `notif.action`; typing in the reply field sends `notif.reply`, which the tablet injects into the `RemoteInput`.
 - Dismissing on either side sends `notif.dismissed` so both stay in sync.
-- Per-app allow/block list on the tablet; a global mute when the Mac is in Do Not Disturb or presenting.
+- Per-app allow/block list on the tablet; a global mute when the Mac is in Do Not Disturb or presenting. The mute is
+  macOS's own: Focus and the "when mirroring or sharing the display" setting silence `UNUserNotificationCenter` banners
+  (ADR 0009).
 
 ### 5.5 Remote input (F6)
 
@@ -401,7 +403,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 
 **Phase 2 milestones**
 
-- [ ] M2.1 Notifications mirrored with dismiss sync and inline reply
+- [ ] M2.1 Notifications mirrored with dismiss sync and inline reply (built; device gate pending)
 - [ ] M2.2 Trackpad and keyboard from the tablet with Accessibility onboarding
 - [ ] M2.3 Media controls, battery, share-to-device
 - [ ] M2.4 AirDrop visibility toggle, receive-folder and transfer-list plumbing (UI only; wired to Tier A if Quick Share support reaches the Pad 3, otherwise to Tier B in Phase 3)
