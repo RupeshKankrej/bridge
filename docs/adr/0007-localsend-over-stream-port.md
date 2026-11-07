@@ -20,11 +20,14 @@ LocalSend protocol (https://github.com/localsend/protocol):
   streams, like `TransportPort`): `NWListener`/`NWConnection` with TLS on macOS, `SSLServerSocket`/`SSLSocket` on
   Android. No Ktor; no new dependency.
 - A **`MulticastPort`** joins LocalSend's group. `_localsend._tcp` is not advertised.
-- The file server asks for a client certificate but doesn't require one. A client whose certificate fingerprint is
-  in the trusted list is a paired peer: its offer is auto-accepted, and it may resume. Everyone else gets the
-  Accept / Decline prompt and plain LocalSend behaviour. The client side pins each server to the fingerprint it
-  announced.
-- Resume is opt-in by the server, per session: the `prepare-upload` response to a trusted client carries
+- **Two ports** (amended in M1.4b): 53317 is plain LocalSend and never asks for a client certificate, so every
+  offer there gets the Accept / Decline prompt. 53319 serves the same API but requires a client certificate, and
+  refuses (403) any certificate not in the trusted list. A Bridge device sends to a paired peer on 53319,
+  presenting its identity certificate; that peer auto-accepts and allows resume. The client side pins each server
+  to the fingerprint it announced. The first version asked for an *optional* client certificate on one port, but
+  `sec_protocol_options_set_peer_authentication_optional` is `API_UNAVAILABLE(macos)`: a Network.framework server
+  either requires a certificate (locking out LocalSend) or never asks for one.
+- Resume is opt-in by the server, per session: the `prepare-upload` response on 53319 carries
   `X-Bridge-Resume: 1`. Then `HEAD /upload?…` returns `Upload-Offset` (bytes received so far), and `POST /upload`
   with an `Upload-Offset` header appends from there; a mismatch gets 409 with the right offset. Header names follow
   the IETF resumable-uploads draft rather than `Range`, which is a response-side header. The receiver keeps a
@@ -32,6 +35,8 @@ LocalSend protocol (https://github.com/localsend/protocol):
   row without progress.
 - A **`FileStorePort`** writes into the receive folder: a temporary name, moved into place on success, deleted
   otherwise. `OutgoingFile`/`FileSource` read files to send. Both are blocking and called off the main thread.
+- Swift names: the stream type is `ByteStream` (Foundation already has `Stream`) and `StreamPort` dials with
+  `dial`, because a second `connect(host:port:callback:)` would clash with `TransportPort`'s Objective-C selector.
 - The interop test runs `core` with JDK TLS adapters against the official LocalSend app, with a person clicking
   in LocalSend. LocalSend has no CLI, so it isn't in CI.
 
@@ -43,5 +48,6 @@ LocalSend protocol (https://github.com/localsend/protocol):
 - Discovered LocalSend devices never expire from the list; a refresh re-announces.
 - On macOS, Swift must convert between `Data` and Kotlin `ByteArray` with a bulk copy (a helper in `appleMain`,
   M1.4b), not byte by byte, to reach 40 MB/s.
+- Ports in use: 53317 (LocalSend TCP + multicast UDP), 53318 (control), 53319 (paired files).
 - M1.4 is split: M1.4a (`core`, this ADR), M1.4b (Mac adapters and UI), M1.4c (Android adapters and UI). The
   device gate runs after M1.4c.

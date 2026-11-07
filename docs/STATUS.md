@@ -2,7 +2,7 @@
 
 **Current phase:** 1 — Foundation
 **Current milestone:** M1.4 — LocalSend server passes interop with the official LocalSend app, both directions.
-Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — next; M1.4c Android adapters and UI. The gate runs after M1.4c.
+Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M1.4c Android adapters and UI — next. The gate runs after M1.4c.
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -23,6 +23,10 @@ Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — next; M1
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M1.4b built: Mac `StreamPort`/`MulticastPort`/`FileStorePort` on Network.framework, menu bar moved to an
+  `NSStatusItem` for drag-and-drop, Finder Services "Send with Bridge", offer prompt and transfer list. Paired peers moved
+  to their own port 53319 because macOS can't do optional client certificates (ADR 0007 amended). curl → Mac app: 1 GB in
+  3.1 s on localhost (~340 MB/s).
 - 2026-11-07 — M1.4a built: LocalSend v2.1 server, client and multicast discovery in `core` over new `StreamPort`/
   `MulticastPort`/`FileStorePort`; client-certificate trust for paired peers; `Upload-Offset` resume; contract tests and
   `localSendInteropTest`. Ktor dropped, `_localsend._tcp` replaced by multicast (ADR 0007). Interop not yet run.
