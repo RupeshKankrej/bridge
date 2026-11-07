@@ -158,7 +158,8 @@ remove Bridge from Accessibility with −, launch, re-add; Always Allow both Key
 ## M2.4 gate (AirDrop visibility, receive folder)
 Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
 After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Network if the tablet can't reach :53318.
-- [ ] Tablet Settings → AirDrop: three options; "Everyone for 10 minutes" says when it reverts; after 10 min it shows Bridge devices only
+- [ ] Pad 3 (no Wi-Fi Aware): Settings has no AirDrop section, the tile picker has no AirDrop tile, Diagnostics shows "AirDrop: Not supported"
+- [ ] (Only on a device with Wi-Fi Aware) Tablet Settings → AirDrop: three options; "Everyone for 10 minutes" says when it reverts; after 10 min it shows Bridge devices only
 - [ ] "Keep Everyone on" stays on after a force-stop and relaunch
 - [ ] Quick-settings tile "AirDrop" (add via the pencil): each tap cycles Off → Bridge devices only → Everyone; Settings follows
 - [ ] Tier A re-check: Quick Share visibility Everyone, Mac AirDrop Everyone: is the Pad 3 in the Mac's AirDrop sheet? (record the result in STATUS)

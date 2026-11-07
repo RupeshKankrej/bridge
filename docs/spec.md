@@ -356,7 +356,7 @@ The toggle lives in Bridge settings and the quick-settings tile; a Mac menu-bar 
 | Clipboard sync | On | Text + images; max size slider |
 | Receive folder | Downloads/Bridge | Per-device |
 | Auto-accept files | Paired devices only | Options: always ask / paired only / everyone on LAN |
-| AirDrop visibility | Bridge devices only | Receiving Off / Bridge devices only / Everyone for 10 minutes; also in the quick tile (see 5.10). The Mac menu-bar control needs a wire message and comes with Tier B (Phase 3) |
+| AirDrop visibility | Bridge devices only | Receiving Off / Bridge devices only / Everyone for 10 minutes; also in the quick tile (see 5.10). Shown only on devices with Wi-Fi Aware; elsewhere the setting and tile are hidden and Diagnostics says why. The Mac menu-bar control needs a wire message and comes with Tier B (Phase 3) |
 | Notification mirroring | Off | Per-app list on tablet |
 | Media controls, battery on Mac, links and text | Off | Three switches on the tablet (5.6) |
 | Mirroring quality | Auto | Resolution, fps and bitrate caps |

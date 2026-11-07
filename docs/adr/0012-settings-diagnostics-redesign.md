@@ -18,6 +18,8 @@ per-feature toggles on the tablet's home screen.
 - AirDrop visibility (M2.4): Off / Bridge devices only / Everyone for 10 minutes with "Keep Everyone on", in Settings and
   a quick-settings tile. Stored only; nothing advertises until Tier A or B, and the UI says so. The Mac menu-bar control
   would need a new wire message for a setting that does nothing yet, so it moves to Tier B (spec §5.10, §7 changed).
+- The AirDrop section and tile appear only where `FEATURE_WIFI_AWARE` is present (checked each launch, so an OS update can
+  bring them back); the Pad 3's firmware turns it off, so there Diagnostics shows "AirDrop: not supported".
 - Receive folder (M2.4): Mac picks any folder (not sandboxed, so a path in UserDefaults). Tablet picks a SAF tree with a
   persisted write grant; files are created through `DocumentsContract`, which has no IS_PENDING, so a partly received
   file is visible under its final name until done (deleted on failure). Default stays `Download/Bridge` via MediaStore.

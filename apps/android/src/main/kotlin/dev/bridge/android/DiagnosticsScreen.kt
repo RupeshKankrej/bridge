@@ -65,6 +65,9 @@ fun DiagnosticsScreen(app: BridgeApplication, system: SystemState, onBack: () ->
         SettingRow("Nearby (mDNS)", state.discovered.joinToString { it.name }.ifEmpty { "none" }, R.drawable.ic_refresh)
         SettingRow("Nearby (LocalSend)", files.nearby.joinToString { "${it.alias} ${it.host}" }.ifEmpty { "none" }, R.drawable.ic_send)
         SettingRow("Background use", if (system.batteryExempt) "Allowed" else "Not allowed", R.drawable.ic_battery)
+        if (!app.airDropSupported) {
+            SettingRow("AirDrop", "Not supported on this tablet: its firmware has no Wi-Fi Aware. Use LocalSend on an iPhone or iPad.", R.drawable.ic_airdrop)
+        }
         SettingRow("Notification access", if (system.notificationAccess) "Granted" else "Not granted", R.drawable.ic_notifications)
         SettingRow("Version", "Bridge ${appVersion(context)}", R.drawable.ic_info)
     }

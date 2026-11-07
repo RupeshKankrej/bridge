@@ -91,7 +91,8 @@ fun SettingsScreen(app: BridgeApplication, system: SystemState, onAllowBackgroun
         SettingRow("Paired devices send without asking", "Others (LocalSend) get an Accept / Decline prompt", R.drawable.ic_check_circle)
     }
 
-    AirDropSection(features)
+    // Only where it can work; elsewhere Diagnostics says why (ADR 0012).
+    if (app.airDropSupported) AirDropSection(features)
 
     Section("About") {
         SettingRow("Diagnostics", "Connection, link quality, last error, crash log", R.drawable.ic_info, onClick = { onOpen(SubScreen.DIAGNOSTICS) })
@@ -132,7 +133,7 @@ private fun AirDropSection(features: Features) {
             if (visibility == Features.AirDrop.EVERYONE && until != 0L) {
                 Button(onClick = { features.setAirDrop(Features.AirDrop.EVERYONE, always = true) }) { Text("Keep Everyone on") }
             }
-            Row { Text("Not available on this tablet: its firmware has no Wi-Fi Aware, which AirDrop needs. Use LocalSend on an iPhone or iPad meanwhile.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            Row { Text("Apple devices can't see this tablet yet: AirDrop support comes in a later Bridge version. Use LocalSend on an iPhone or iPad meanwhile.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
     }
 }
