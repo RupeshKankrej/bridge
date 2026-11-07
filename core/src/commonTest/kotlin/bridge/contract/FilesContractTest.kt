@@ -5,7 +5,7 @@ package bridge.contract
 import bridge.files.FilesState
 import bridge.files.TransferStatus
 import bridge.files.safePath
-import bridge.port.Stream
+import bridge.port.ByteStream
 import bridge.port.TrustedPeer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -142,6 +142,27 @@ class FilesContractTest {
     }
 
     @Test
+    fun unpairedDeviceWithACertificateIsRefusedOnThePairedPort() = runTest {
+        val p = nodes(paired = false)
+        val stranger = RawClient(p.net, p.mac, port = 53319, fingerprint = "f".repeat(64))
+        stranger.send("POST /api/localsend/v2/prepare-upload HTTP/1.1\r\nContent-Length: 0\r\n\r\n")
+        runCurrent()
+        assertTrue(stranger.received().startsWith("HTTP/1.1 403"))
+        assertNull(p.mac.state.offer)
+    }
+
+    @Test
+    fun pairedPeerOnThePlainPortIsJustAnotherLocalSendClient() = runTest {
+        val p = nodes()
+        // The paired tablet's certificate isn't asked for on 53317, so it gets the prompt like anyone else.
+        val tab = RawClient(p.net, p.mac, fingerprint = p.tab.id)
+        val prepare = """{"info":{"alias":"Pad"},"files":{"f":{"id":"f","fileName":"a","size":1,"fileType":"x"}}}"""
+        tab.send("POST /api/localsend/v2/prepare-upload HTTP/1.1\r\nContent-Length: ${prepare.length}\r\n\r\n$prepare")
+        runCurrent()
+        assertNotNull(p.mac.state.offer)
+    }
+
+    @Test
     fun senderPathsCannotEscapeTheReceiveFolder() {
         assertEquals("etc/passwd", safePath("../../etc/passwd"))
         assertEquals("a/b.txt", safePath("/a/./b.txt"))
@@ -188,13 +209,13 @@ class FilesContractTest {
     }
 }
 
-/** Speaks raw HTTP to [server] without a client certificate, like the LocalSend app. */
-private class RawClient(net: StreamNet, server: FilesNode) {
-    private lateinit var stream: Stream
+/** Speaks raw HTTP to [server]; by default on 53317 without a client certificate, like the LocalSend app. */
+private class RawClient(net: StreamNet, server: FilesNode, port: Int = 53317, fingerprint: String? = null) {
+    private lateinit var stream: ByteStream
     private val inbox = StringBuilder()
 
     init {
-        net.connect("10.0.0.9", null, server.host, 53317) { s, _ -> stream = s!! }
+        net.connect("10.0.0.9", fingerprint, server.host, port) { s, _ -> stream = s!! }
         pump()
     }
 

@@ -24,7 +24,7 @@ import kotlin.time.Duration.Companion.minutes
  * on the same Wi-Fi. Excluded from `allTests`.
  */
 class LocalSendInteropTest {
-    private val port = System.getProperty("bridge.interopPort")?.toInt() ?: 53319
+    private val port = System.getProperty("bridge.interopPort")?.toInt() ?: 53321
     private val dir = File(System.getProperty("bridge.interopDir") ?: "build/interop").apply { deleteRecursively(); mkdirs() }
 
     @Test
@@ -34,12 +34,13 @@ class LocalSendInteropTest {
         val streams = object : bridge.port.StreamPort {
             val real by lazy { JvmStreams(keyStore.sslContext()) }
 
-            override fun listen(port: Int, onStream: (bridge.port.Stream) -> Unit) = real.listen(port, onStream)
+            override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (bridge.port.ByteStream) -> Unit) =
+                real.listen(port, requireClientCertificate, onStream)
 
-            override fun connect(host: String, port: Int, callback: (bridge.port.Stream?, String?) -> Unit) = real.connect(host, port, callback)
+            override fun dial(host: String, port: Int, callback: (bridge.port.ByteStream?, String?) -> Unit) = real.dial(host, port, callback)
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
-        val files = FileTransfer("Bridge interop", Platform.MACOS, "JVM", keyStore, streams, JvmMulticast(), DirStore(File(dir, "received")), scope, Dispatchers.IO, port)
+        val files = FileTransfer("Bridge interop", Platform.MACOS, "JVM", keyStore, streams, JvmMulticast(), DirStore(File(dir, "received")), scope, Dispatchers.IO, port, port + 2)
         scope.launch { files.state.collect { s -> s.offer?.let { files.respond(it.id, accept = true) } } }
         files.start()
 

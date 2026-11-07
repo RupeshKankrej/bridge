@@ -7,7 +7,7 @@ import bridge.port.FileStorePort
 import bridge.port.KeyStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.Stream
+import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.protocol.Platform
 import kotlinx.coroutines.CancellationException
@@ -73,10 +73,11 @@ enum class TransferStatus { WAITING, RUNNING, PAUSED, DONE, FAILED, CANCELLED, D
 data class Offer(val id: String, val senderName: String, val files: List<TransferFile>)
 
 /**
- * LocalSend v2.1 over HTTPS on port 53317 (spec §4, §5.3, ADR 0007): the receiving server, the sending
- * client and multicast discovery. Paired Bridge peers (recognised by their TLS client certificate)
- * auto-accept and may resume an upload after a drop; everyone else gets an Accept / Decline prompt and
- * plain LocalSend behaviour. All state lives on [scope]'s single thread; file I/O runs on [io].
+ * LocalSend v2.1 over HTTPS (spec §4, §5.3, ADR 0007): the receiving server, the sending client and
+ * multicast discovery. Port 53317 is plain LocalSend: every offer gets an Accept / Decline prompt. Port
+ * 53319 serves the same API but requires a client certificate, and only paired peers get in; they
+ * auto-accept and may resume an upload after a drop. All state lives on [scope]'s single thread; file
+ * I/O runs on [io].
  */
 class FileTransfer internal constructor(
     private val name: String,
@@ -89,6 +90,7 @@ class FileTransfer internal constructor(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val port: Int = LOCALSEND_PORT,
+    private val pairedPort: Int = PAIRED_FILES_PORT,
 ) {
     constructor(
         name: String,
@@ -114,7 +116,8 @@ class FileTransfer internal constructor(
 
     fun start() {
         scope.launch {
-            streams.listen(port) { s -> scope.launch { serve(s) } }
+            streams.listen(port, requireClientCertificate = false) { s -> scope.launch { serve(s, paired = false) } }
+            streams.listen(pairedPort, requireClientCertificate = true) { s -> scope.launch { serve(s, paired = true) } }
             multicast.join { data, host -> scope.launch { onDatagram(data, host) } }
             announce()
         }
@@ -245,19 +248,25 @@ class FileTransfer internal constructor(
     private class InFile(val index: Int, val size: Long, val path: String, val token: String) {
         var sink: FileSink? = null
         var received = 0L
-        var stream: Stream? = null
+        var stream: ByteStream? = null
         var finished = false
     }
 
     private var inbound: Inbound? = null
     private var pendingOffer: CompletableDeferred<Boolean>? = null
 
-    private suspend fun serve(stream: Stream) {
+    private suspend fun serve(stream: ByteStream, paired: Boolean) {
         val http = HttpStream(stream)
+        // Only the paired port asks for a certificate, so only there does it mean anything.
+        val trusted = paired && isTrusted(stream.peerFingerprint)
         try {
             while (true) {
                 val head = http.readHead() ?: break
-                if (!route(http, head)) break
+                if (paired && !trusted) {
+                    refuse(http, 403)
+                    break
+                }
+                if (!route(http, head, trusted)) break
             }
         } catch (e: CancellationException) {
             throw e
@@ -270,12 +279,12 @@ class FileTransfer internal constructor(
     }
 
     /** Returns whether to keep the connection open for another request. */
-    private suspend fun route(http: HttpStream, head: HttpHead): Boolean {
+    private suspend fun route(http: HttpStream, head: HttpHead, trusted: Boolean): Boolean {
         val keepAlive = !head.headers["connection"].equals("close", ignoreCase = true)
         val ok = when ("${head.method} ${head.path}") {
             "GET $API/info" -> http.respond(200, json(DeviceInfo.serializer(), info())).let { true }
             "POST $API/register" -> register(http, head)
-            "POST $API/prepare-upload" -> prepareUpload(http, head)
+            "POST $API/prepare-upload" -> prepareUpload(http, head, trusted)
             "POST $API/upload" -> upload(http, head)
             "HEAD $API/upload" -> uploadOffset(http, head)
             "POST $API/cancel" -> cancelRequest(http, head)
@@ -297,13 +306,12 @@ class FileTransfer internal constructor(
         return true
     }
 
-    private suspend fun prepareUpload(http: HttpStream, head: HttpHead): Boolean {
+    private suspend fun prepareUpload(http: HttpStream, head: HttpHead, trusted: Boolean): Boolean {
         val req = decode(PrepareUpload.serializer(), http.readBytes(head, MAX_JSON)) ?: return refuse(http, 400)
         val files = req.files.values.map { it to (safePath(it.fileName) ?: return refuse(http, 400)) }
         if (files.isEmpty() || files.any { it.first.size < 0 }) return refuse(http, 400)
         if (inbound != null || pendingOffer != null) return refuse(http, 409)
-        val sender = http.stream.peerFingerprint
-        val trusted = sender != null && keyStore.trustedPeers().any { it.fingerprint == sender }
+        val sender = http.stream.peerFingerprint.takeIf { trusted }
         val list = files.map { (f, path) -> TransferFile(path, f.size) }
         if (!trusted) {
             val answer = CompletableDeferred<Boolean>()
@@ -458,7 +466,7 @@ class FileTransfer internal constructor(
         try {
             val dtos = files.map { FileDto(newId(), it.path, it.size, it.mime) }
             val body = json(PrepareUpload.serializer(), PrepareUpload(info(network = true), dtos.associateBy { it.id }))
-            val (head, resp) = request(peer, "POST", "$API/prepare-upload", body)
+            val (head, resp) = request(peer, "POST", "$API/prepare-upload", body, port = filesPort(peer))
             when (head.status) {
                 200 -> Unit
                 204 -> return finish(l, TransferStatus.DONE)
@@ -485,7 +493,7 @@ class FileTransfer internal constructor(
             finish(l, TransferStatus.CANCELLED)
             sessionId?.let { sid ->
                 withContext(NonCancellable) {
-                    withTimeoutOrNull(3.seconds) { runCatching { request(peer, "POST", "$API/cancel?" + encodeQuery(mapOf("sessionId" to sid))) } }
+                    withTimeoutOrNull(3.seconds) { runCatching { request(peer, "POST", "$API/cancel?" + encodeQuery(mapOf("sessionId" to sid)), port = filesPort(peer)) } }
                 }
             }
             throw e
@@ -502,7 +510,7 @@ class FileTransfer internal constructor(
         while (true) {
             try {
                 val headers = if (offset > 0) mapOf(OFFSET_HEADER to "$offset") else emptyMap()
-                val status = request(peer, "POST", target, headers = headers, length = f.size - offset) { write ->
+                val status = request(peer, "POST", target, headers = headers, length = f.size - offset, port = filesPort(peer)) { write ->
                     var sent = offset
                     val src = withContext(io) { f.open(offset) }
                     try {
@@ -524,7 +532,7 @@ class FileTransfer internal constructor(
                 setFile(l, i, TransferStatus.PAUSED)
                 delay(RETRY_DELAY)
                 val resumed = try {
-                    val (head, _) = request(peer, "HEAD", target)
+                    val (head, _) = request(peer, "HEAD", target, port = filesPort(peer))
                     check(head.status == 200) { "receiver dropped the session (${head.status})" }
                     head.headers[OFFSET_HEADER.lowercase()]?.toLongOrNull() ?: error("no $OFFSET_HEADER")
                 } catch (e: StreamException) {
@@ -548,13 +556,14 @@ class FileTransfer internal constructor(
         body: ByteArray? = null,
         headers: Map<String, String> = emptyMap(),
         length: Long = body?.size?.toLong() ?: 0,
+        port: Int = peer.port,
         writeBody: (suspend (suspend (ByteArray) -> Unit) -> Unit)? = null,
     ): Pair<HttpHead, ByteArray> {
-        val s = connect(peer.host, peer.port)
+        val s = connect(peer.host, port)
         try {
             if (s.peerFingerprint != peer.fingerprint) throw StreamException("${peer.alias} presented a different certificate")
             val http = HttpStream(s)
-            val all = headers + mapOf("Host" to "${peer.host}:${peer.port}", "Content-Length" to "$length", "Connection" to "close") +
+            val all = headers + mapOf("Host" to "${peer.host}:$port", "Content-Length" to "$length", "Connection" to "close") +
                 (if (body != null) mapOf("Content-Type" to "application/json") else emptyMap())
             http.writeHead("$method $target HTTP/1.1", all)
             body?.let { s.writeAll(it) }
@@ -567,9 +576,14 @@ class FileTransfer internal constructor(
         }
     }
 
-    private suspend fun connect(host: String, port: Int): Stream = withTimeoutOrNull(IO_TIMEOUT) {
-        suspendCancellableCoroutine<Pair<Stream?, String?>> { c ->
-            streams.connect(host, port) { s, error -> if (c.isActive) c.resume(s to error) else s?.close() }
+    private fun isTrusted(fingerprint: String?) = fingerprint != null && keyStore.trustedPeers().any { it.fingerprint == fingerprint }
+
+    /** A paired peer is a Bridge device: send over its paired port, presenting our certificate. */
+    private fun filesPort(peer: LocalSendPeer) = if (isTrusted(peer.fingerprint)) pairedPort else peer.port
+
+    private suspend fun connect(host: String, port: Int): ByteStream = withTimeoutOrNull(IO_TIMEOUT) {
+        suspendCancellableCoroutine<Pair<ByteStream?, String?>> { c ->
+            streams.dial(host, port) { s, error -> if (c.isActive) c.resume(s to error) else s?.close() }
         }
     }.let { result -> result?.first ?: throw StreamException(result?.second ?: "connect to $host timed out") }
 }
