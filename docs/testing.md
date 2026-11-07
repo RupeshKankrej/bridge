@@ -91,20 +91,20 @@ accepted known issues for v0.1.0, agreed 2026-11-07), plus:
 
 ## M2.1 gate (notifications)
 Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
-- [ ] Tablet: Notifications → turn on "Show this tablet's notifications on the Mac": the explanation and "Allow notification
+- [x] Tablet: Notifications → turn on "Show this tablet's notifications on the Mac": the explanation and "Allow notification
       access" appear; the button opens Bridge's switch in Settings (if Android says "Restricted setting", allow it in
       App info → ⋮ → Allow restricted settings); back in Bridge the button is gone
-- [ ] **Gate:** a WhatsApp message to the tablet appears on the Mac within 1 s, under the WhatsApp group, with the WhatsApp
+- [x] **Gate:** a WhatsApp message to the tablet appears on the Mac within 1 s, under the WhatsApp group, with the WhatsApp
       icon as the thumbnail; the first one triggers the macOS Notifications permission prompt
-- [ ] **Gate:** Mac → Reply on that notification, type, Send: the message is delivered in WhatsApp (check the chat) and no
+- [x] **Gate:** Mac → Reply on that notification, type, Send: the message is delivered in WhatsApp (check the chat) and no
       second banner for your own reply appears on the Mac
-- [ ] A Mac action button (e.g. "Mark as read") works on the tablet
-- [ ] Close the notification on the Mac: it disappears from the tablet's shade. Swipe one away on the tablet: it
+- [x] A Mac action button (e.g. "Mark as read") works on the tablet
+- [x] Close the notification on the Mac: it disappears from the tablet's shade. Swipe one away on the tablet: it
       disappears from the Mac's Notification Center
-- [ ] Choose apps… → turn WhatsApp off: its notifications stay on the tablet only; on again: they mirror
-- [ ] Turn on Do Not Disturb on the Mac: no banner, the notification is in Notification Center. Same while sharing the screen
+- [x] Choose apps… → turn WhatsApp off: its notifications stay on the tablet only; on again: they mirror
+- [x] Turn on Do Not Disturb on the Mac: no banner, the notification is in Notification Center. Same while sharing the screen
       (e.g. a Zoom/Meet screen share or AirPlay mirroring) with the default notification settings
-- [ ] Music playback and the "Bridge is running" notification are never mirrored
+- [x] Music playback and the "Bridge is running" notification are never mirrored
 
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About

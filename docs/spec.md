@@ -403,7 +403,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 
 **Phase 2 milestones**
 
-- [ ] M2.1 Notifications mirrored with dismiss sync and inline reply (built; device gate pending)
+- [x] M2.1 Notifications mirrored with dismiss sync and inline reply
 - [ ] M2.2 Trackpad and keyboard from the tablet with Accessibility onboarding
 - [ ] M2.3 Media controls, battery, share-to-device
 - [ ] M2.4 AirDrop visibility toggle, receive-folder and transfer-list plumbing (UI only; wired to Tier A if Quick Share support reaches the Pad 3, otherwise to Tier B in Phase 3)
