@@ -132,7 +132,7 @@ Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app
 On the tablet turn on the three switches under "Media, battery and links".
 A re-signed dev build can lose its **Local Network** grant: the Mac listens but the tablet says "Can't reach …:53318"
 (and its Accessibility grant, see M2.2). Allow the prompt, or turn Bridge off and on again in
-System Settings → Privacy & Security → Local Network. If Services → Send to Tablet is missing, tick it under Keyboard →
+System Settings → Privacy & Security → Local Network. If Services → Send with Bridge is missing, tick it under Keyboard →
 Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreServices/pbs -flush`.
 - [ ] Tablet home open: the card says "Controls whatever is playing on <Mac>" with ⏮ ⏯ ⏭ and a volume slider at the Mac's volume
 - [ ] YouTube playing in the Mac's browser: ⏯ pauses within ~300 ms, again plays. ⏭ / ⏮ skip in a playlist
@@ -143,11 +143,11 @@ Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreService
 - [ ] **Gate (failed, accepted 2026-11-07; STATUS known issues):** play/pause YouTube (or whatever plays) on the Mac from the tablet (was Spotify; changed by agreement, ADR 0011)
 - [x] **Gate:** Chrome on the tablet → Share → Bridge → the page opens in the Mac's default browser; a toast says "Sent to <Mac>"
 - [x] Share plain text (e.g. from Keep) → it's on the Mac's clipboard with a "Text from your tablet" notice
-- [x] Mac: select text in Safari → right-click → Services → Send to Tablet → a tablet notification; tap opens the share sheet.
+- [x] Mac: select text in Safari → right-click → Services → Send with Bridge → a tablet notification; tap opens the share sheet.
       Select a URL → the notification's tap opens it in the tablet's browser
-- [x] Links switch off on the tablet: Services → Send to Tablet makes the Mac menu say it's turned off there; Share → Bridge
+- [x] Links switch off on the tablet: Services → Send with Bridge makes the Mac menu say it's turned off there; Share → Bridge
       on the tablet toasts the switch's name
-- [x] Tablet offline: Services → Send to Tablet opens the popover with "The tablet isn't connected"
+- [x] Tablet offline: Services → Send with Bridge opens the popover with "The tablet isn't connected"
 
 ## Mac signing (once per developer machine)
 Create `apps/macos/Local.xcconfig` (git-ignored) with `CODE_SIGN_IDENTITY = Apple Development` and `DEVELOPMENT_TEAM = <team>`
@@ -167,6 +167,8 @@ After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Netw
 - [ ] Mac Settings → General → Receive folder → Change…: a file from the tablet lands there; Reset goes back to ~/Downloads/Bridge
 
 ## M2.5 checks (diagnostics, crash log, redesign)
+- [ ] Finder → right-click a file: Services shows only "Send with Bridge", and it sends the file (not its path).
+      Selected text in Safari → Services → Send with Bridge: arrives on the tablet as before
 - [ ] Tablet: Home / Send / Settings rail; colours follow the wallpaper (change it: Bridge follows); dark mode follows the system
 - [ ] Tablet Send: File, Media (photo picker), Folder each add to the selection; × removes; tap the Mac → sent, appears in Recent transfers
 - [ ] Tablet Send → Text "hello" → Mac: a .txt with the text lands in the receive folder. → official LocalSend: shown as a message

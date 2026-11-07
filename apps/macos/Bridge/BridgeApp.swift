@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         model.onOffer = { [weak self] offer in self?.notify(offer) }
         model.onSettings = { [weak self] tab in self?.showSettings(tab) }
 
-        // Finder → Services → "Send with Bridge", and "Send to Tablet" for selected text and links (NSServices in Info.plist).
+        // Services → "Send with Bridge" for files, selected text and links (NSServices in Info.plist).
         services = ServicesProvider(model: model)
         NSApp.servicesProvider = services
         NSUpdateDynamicServices()
@@ -143,23 +143,27 @@ private final class OfferPanel: NSPanel {
 
 func batteryText(_ b: BatteryState) -> String { "\(b.level)%" + (b.charging ? " ⚡︎" : "") }
 
-/// Target of the Services items. Their titles are fixed in Info.plist, so they can't name the device;
+/// Target of the one Services item, "Send with Bridge". Its title is fixed in Info.plist, so it can't name the device;
 /// for files the popover asks which device unless exactly one paired device is nearby; text goes to every connected one.
+/// One item, not separate file and text ones: Finder offers a file as a file URL and as text too, so a text-only
+/// item showed up for files as well and sent the file's path.
 final class ServicesProvider: NSObject {
     private let model: BridgeModel
 
     init(model: BridgeModel) { self.model = model }
 
-    @objc func sendFiles(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+    /// Files first (Finder also puts their paths on as text); otherwise selected text or a link opens on the tablet (F12).
+    @objc func send(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: .URL)
         // AppKit calls service handlers on the main thread.
-        MainActor.assumeIsolated { model.send(urls) }
-    }
-
-    /// "Send to Tablet": selected text, or a link (e.g. from a browser's address field), opens on the tablet (F12).
-    @objc func sendText(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
-        guard let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: .URL) else { return }
-        MainActor.assumeIsolated { model.share(text) }
+        MainActor.assumeIsolated {
+            if !urls.isEmpty {
+                model.send(urls)
+            } else if let text {
+                model.share(text)
+            }
+        }
     }
 }
 
@@ -289,7 +293,7 @@ final class BridgeModel: ObservableObject {
         pendingSend = []
     }
 
-    /// Services "Send to Tablet". Offline: say so in the popover (spec §7) rather than dropping it silently.
+    /// Services "Send with Bridge" on text. Offline: say so in the popover (spec §7) rather than dropping it silently.
     func share(_ text: String) {
         guard isConnected else {
             problem = "The tablet isn't connected, so the text wasn't sent"

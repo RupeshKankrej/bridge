@@ -70,7 +70,7 @@ fun SettingsScreen(app: BridgeApplication, system: SystemState, onAllowBackgroun
     Section("Media, battery and links") {
         FeatureRow("Control the Mac's media", "Play, pause, skip and volume from the Home tab", R.drawable.ic_music, features.media)
         FeatureRow("Show this tablet's battery on the Mac", "In the Mac's menu bar", R.drawable.ic_battery, features.battery)
-        FeatureRow("Links and text", "Share → Bridge sends to the Mac; the Mac's Send to Tablet arrives here", R.drawable.ic_link, features.share)
+        FeatureRow("Links and text", "Share → Bridge sends to the Mac; the Mac's Send with Bridge arrives here", R.drawable.ic_link, features.share)
     }
 
     val folder by features.receiveFolder.collectAsState()

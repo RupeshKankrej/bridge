@@ -245,8 +245,8 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
   sender that reports a position, ticks aren't sent either, the receiver advances it, and a seek (> 2 s off) is.
 - Tablet sends `battery.state` on connect, every 5 minutes and on charger change while battery reporting is on; Mac menu
   bar shows the tablet's level next to the icon.
-- Share (F12): tablet share-sheet target for text and links ("Bridge"), Mac Services item "Send to Tablet" for selected
-  text and links; both send `share.text`. A link (the whole shared text is one http(s) URL) opens in the browser; other
+- Share (F12): tablet share-sheet target for text and links ("Bridge"), Mac Services item "Send with Bridge" (the same item
+  as for files; one item because Finder offers files as text too) for selected text and links; both send `share.text`. A link (the whole shared text is one http(s) URL) opens in the browser; other
   text goes on the Mac's clipboard with a notice, or becomes a tablet notification that opens the share sheet. Tablets
   get a notification rather than an opened browser because Android 10+ blocks activity starts from the background.
 - Each of media controls, battery reporting and links/text has its own switch on the tablet, off by default (spec §7).
