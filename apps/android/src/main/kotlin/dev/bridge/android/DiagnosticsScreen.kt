@@ -82,7 +82,10 @@ fun DiagnosticsScreen(app: BridgeApplication, system: SystemState, onBack: () ->
                     context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Bridge crash log", log))
                     Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                 }) { Text("Copy") }
-                OutlinedButton(onClick = { CrashLog.clear(); log = "" }) { Text("Clear") }
+                OutlinedButton(onClick = {
+                    CrashLog.clear()
+                    log = ""
+                }) { Text("Clear") }
             }
         }
     }

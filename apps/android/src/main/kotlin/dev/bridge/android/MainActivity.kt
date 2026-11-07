@@ -76,8 +76,11 @@ class MainActivity : ComponentActivity() {
                     OfferPrompt(app)
                     when (sub) {
                         SubScreen.TRACKPAD -> TrackpadScreen(bridge) { sub = null }
+
                         SubScreen.DIAGNOSTICS -> Page { DiagnosticsScreen(app, system.value) { sub = null } }
+
                         SubScreen.NOTIFICATION_APPS -> Page { NotificationAppsScreen(app.notifications) { sub = null } }
+
                         null -> Row(Modifier.fillMaxSize().safeDrawingPadding()) {
                             NavigationRail(Modifier.padding(top = 16.dp)) {
                                 Spacer(Modifier.size(8.dp))
@@ -94,17 +97,21 @@ class MainActivity : ComponentActivity() {
                                 when (tab) {
                                     Tab.HOME -> Page {
                                         HomeScreen(
-                                            app, system.value,
+                                            app,
+                                            system.value,
                                             onScan = ::scan,
                                             onAllowBackground = ::requestBatteryExemption,
                                             onTrackpad = { sub = SubScreen.TRACKPAD },
                                             onSend = { tab = Tab.SEND },
                                         )
                                     }
+
                                     Tab.SEND -> Page { SendScreen(app) }
+
                                     Tab.SETTINGS -> Page {
                                         SettingsScreen(
-                                            app, system.value,
+                                            app,
+                                            system.value,
                                             onAllowBackground = ::requestBatteryExemption,
                                             onOpen = { sub = it },
                                         )

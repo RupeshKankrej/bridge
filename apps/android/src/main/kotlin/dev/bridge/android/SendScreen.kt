@@ -131,7 +131,10 @@ fun SendScreen(app: BridgeApplication) {
             title = { Text("Send text") },
             text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 4) },
             confirmButton = {
-                Button(onClick = { app.select(listOf(TextFile(text))); writing = false }, enabled = text.isNotBlank()) { Text("Add") }
+                Button(onClick = {
+                    app.select(listOf(TextFile(text)))
+                    writing = false
+                }, enabled = text.isNotBlank()) { Text("Add") }
             },
             dismissButton = { TextButton(onClick = { writing = false }) { Text("Cancel") } },
         )

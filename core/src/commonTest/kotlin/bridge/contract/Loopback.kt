@@ -94,6 +94,7 @@ class Lan(val clock: () -> Long) {
 class LoopConnection(override val peerFingerprint: String, private val lan: Lan) : Connection {
     lateinit var other: LoopConnection
     private var listener: ConnectionListener? = null
+
     /** Frames that arrived before [start]: String for text, ByteArray for binary. */
     private val pending = mutableListOf<Any>()
     var closeCode: Int? = null
@@ -122,8 +123,7 @@ class LoopConnection(override val peerFingerprint: String, private val lan: Lan)
         listener?.let { deliver(it, frame) } ?: pending.add(frame)
     }
 
-    private fun deliver(listener: ConnectionListener, frame: Any) =
-        if (frame is ByteArray) listener.onBinary(frame) else listener.onText(frame as String)
+    private fun deliver(listener: ConnectionListener, frame: Any) = if (frame is ByteArray) listener.onBinary(frame) else listener.onText(frame as String)
 
     override fun close(code: Int, reason: String) {
         if (closeCode != null) return
@@ -270,8 +270,7 @@ class Device(val lan: Lan, val host: String, name: String, platform: Platform, s
     }
 
     private val discovery = object : DiscoveryPort {
-        override fun advertise(port: Int, txt: Map<String, String>) =
-            lan.advertise(DiscoveredPeer(txt.getValue("id"), txt.getValue("name"), txt.getValue("platform"), host, port))
+        override fun advertise(port: Int, txt: Map<String, String>) = lan.advertise(DiscoveredPeer(txt.getValue("id"), txt.getValue("name"), txt.getValue("platform"), host, port))
 
         override fun browse(onPeers: (List<DiscoveredPeer>) -> Unit) = lan.browse(onPeers)
     }

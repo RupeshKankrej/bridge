@@ -2,6 +2,9 @@
 
 ## Automated
 - `./gradlew :core:allTests` — codec round-trips, session state machine, pairing, LocalSend parsing, contract tests over localhost. Run before every commit.
+- ktlint 1.8.0 (style in `.editorconfig`: Kotlin official conventions, Compose names allowed). Not wired into Gradle yet
+  (that would be a new dependency, spec §8): `java -jar ktlint-cli-1.8.0-all.jar "core/src/**/*.kt" "apps/android/src/**/*.kt"`
+  with the jar from Maven Central (`com.pinterest.ktlint:ktlint-cli:1.8.0:all`); add `-F` to fix.
 - `./gradlew :core:localSendInteropTest` — runs `core` with JDK TLS adapters as "Bridge interop" on port 53321 (paired port 53323) and exchanges
   files with the official LocalSend app on any device on the same Wi-Fi: send it any file from LocalSend, then accept
   `interop.bin` (20 MB) in LocalSend. Waits up to 3 minutes for each step. Received files land in `core/build/interop/`.

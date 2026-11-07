@@ -24,9 +24,9 @@ import bridge.protocol.Hello
 import bridge.protocol.InputGesture
 import bridge.protocol.InputKey
 import bridge.protocol.InputPointer
-import bridge.protocol.MacKey
 import bridge.protocol.MAX_CLIPBOARD_BYTES
 import bridge.protocol.MAX_ICON_BYTES
+import bridge.protocol.MacKey
 import bridge.protocol.MediaAction
 import bridge.protocol.MediaCommand
 import bridge.protocol.MediaState
@@ -576,6 +576,7 @@ class Bridge internal constructor(
         // Exhaustive on purpose: a new message type must decide here whether it needs a paired session.
         when (m) {
             Ping -> send(s, Pong, replyTo = env.id)
+
             Pong -> {
                 s.missedPongs = 0
                 s.pongs++
@@ -585,15 +586,21 @@ class Bridge internal constructor(
                     if (s.paired) refreshPaired()
                 }
             }
+
             is Hello -> onHello(s, m)
+
             is PairRequest -> onPairRequest(s, m, env.id)
+
             is PairConfirm -> onPairConfirm(s, m, env.id)
+
             is PairReject -> if (pairingSession === s) {
                 endPairing("${s.peer?.name} declined pairing")
                 rotateCode()
                 drop(s, CLOSE_NORMAL, "pairing rejected")
             }
+
             is ProtocolError -> onPeerError(s, m)
+
             // Not "not_paired": that code makes a paired peer forget us.
             is ClipboardSet, ClipboardRequest -> if (!s.paired) {
                 send(s, ProtocolError("unauthorized", "pair first"), env.id)
@@ -603,6 +610,7 @@ class Bridge internal constructor(
                 // Only resend what the peer doesn't already have.
                 clip.takeIf { it.text != null && it.origin != s.peer!!.deviceId }?.let { sendClip(s, it, env.id) }
             }
+
             is NotifPosted, is NotifDismissed, is NotifAction, is NotifReply -> if (!s.paired) {
                 send(s, ProtocolError("unauthorized", "pair first"), env.id)
             } else {
@@ -614,12 +622,14 @@ class Bridge internal constructor(
                     else -> {}
                 }
             }
+
             is InputPointer, is InputKey -> when {
                 !s.paired -> send(s, ProtocolError("unauthorized", "pair first"), env.id)
                 m is InputKey && (m.keyCode == null) == (m.text == null) -> send(s, ProtocolError("invalid_message", "send keyCode or text"), env.id)
                 m is InputKey && m.keyCode != null && m.keyCode !in 0..MacKey.MAX -> send(s, ProtocolError("invalid_message", "bad keyCode"), env.id)
                 else -> onInput(s, m, env.id)
             }
+
             is MediaState, is MediaCommand, is BatteryState, is ShareText -> if (!s.paired) {
                 send(s, ProtocolError("unauthorized", "pair first"), env.id)
             } else {
@@ -635,6 +645,7 @@ class Bridge internal constructor(
                 s.mediaAt = now()
                 refreshPaired()
             }
+
             is MediaCommand -> when (m.action) {
                 MediaAction.WATCH, MediaAction.UNWATCH -> {
                     s.watchesMedia = m.action == MediaAction.WATCH
@@ -642,26 +653,34 @@ class Bridge internal constructor(
                     // Already polling for another peer: this one gets the current state now, not at the next change.
                     if (s.watchesMedia) sentMedia?.let { send(s, it.copy(position = expectedPosition(it))) }
                 }
+
                 MediaAction.VOLUME -> if (m.volume == null || m.volume !in 0..100) {
                     send(s, ProtocolError("invalid_message", "volume must be 0–100"), id)
                 } else {
                     runMedia(s, m, id)
                 }
+
                 else -> runMedia(s, m, id)
             }
+
             is BatteryState -> if (m.level !in 0..100) {
                 send(s, ProtocolError("invalid_message", "level must be 0–100"), id)
             } else {
                 s.battery = m
                 refreshPaired()
             }
+
             is ShareText -> when {
                 (m.text == null) == (m.url == null) -> send(s, ProtocolError("invalid_message", "send text or url"), id)
+
                 // Never hand a peer-chosen file:, javascript: or app scheme to the OS opener.
                 m.url != null && !ShareText.isWebUrl(m.url) -> send(s, ProtocolError("invalid_message", "only http and https links"), id)
+
                 (m.text ?: m.url!!).encodeToByteArray().size > MAX_CLIPBOARD_BYTES -> send(s, ProtocolError("too_large", "shared text over 1 MB"), id)
+
                 !share.open(m) -> send(s, ProtocolError("share_off", "receiving links and text is turned off in Bridge there"), id)
             }
+
             else -> {}
         }
     }
@@ -703,8 +722,7 @@ class Bridge internal constructor(
         return abs(p - expected) > SEEK_TOLERANCE_S
     }
 
-    private fun expectedPosition(m: MediaState): Double? =
-        m.position?.let { if (m.playing) it + (now() - sentMediaAt) / 1000.0 else it }
+    private fun expectedPosition(m: MediaState): Double? = m.position?.let { if (m.playing) it + (now() - sentMediaAt) / 1000.0 else it }
 
     private fun onInput(s: Session, m: Message, id: String) {
         val injected = if (m is InputPointer) input.pointer(m) else input.key(m as InputKey)
@@ -767,6 +785,7 @@ class Bridge internal constructor(
                 if (trusted.name != m.name) keyStore.saveTrustedPeer(trusted.copy(name = m.name))
                 markPaired(s)
             }
+
             s.invite != null -> {
                 pairingSession?.let { reject(it) }
                 pairingSession = s
@@ -774,6 +793,7 @@ class Bridge internal constructor(
                 send(s, PairRequest(myId, s.invite.code))
                 _state.update { it.copy(pairing = Pairing(m.name, s.invite.code, awaitingLocalConfirm = true), message = null) }
             }
+
             // Unpaired and nothing to pair with: refuse (spec §3).
             _state.value.invite == null -> {
                 send(s, ProtocolError("not_paired", "this device is not paired"))
@@ -906,8 +926,7 @@ private fun newCode(): String {
     return (n % 1_000_000).toString().padStart(6, '0')
 }
 
-private fun codesMatch(a: String, b: String): Boolean =
-    a.length == b.length && a.indices.fold(0) { acc, i -> acc or (a[i].code xor b[i].code) } == 0
+private fun codesMatch(a: String, b: String): Boolean = a.length == b.length && a.indices.fold(0) { acc, i -> acc or (a[i].code xor b[i].code) } == 0
 
 /** pair.reject echoes the code it refuses; never echo malformed input (schema: 6 digits). */
 private fun safeCode(code: String) = code.takeIf { it.length == 6 && it.all(Char::isDigit) } ?: "000000"

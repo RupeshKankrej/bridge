@@ -9,8 +9,8 @@ import bridge.protocol.Envelope
 import bridge.protocol.Hello
 import bridge.protocol.PROTOCOL_VERSION
 import bridge.protocol.Ping
-import bridge.protocol.ProtocolError
 import bridge.protocol.Platform
+import bridge.protocol.ProtocolError
 import bridge.session.CLOSE_POLICY
 import bridge.session.CLOSE_VERSION_MISMATCH
 import bridge.session.CONTROL_PORT

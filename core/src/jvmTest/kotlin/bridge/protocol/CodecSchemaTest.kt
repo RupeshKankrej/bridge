@@ -119,7 +119,13 @@ class CodecSchemaTest {
 
     @Test
     fun validatorCatchesViolationsAndRejectsUnknownKeywords() {
-        val bad = buildJsonObject { put("v", 2); put("id", "nope"); put("type", "ping"); put("ts", 1); put("extra", 1) }
+        val bad = buildJsonObject {
+            put("v", 2)
+            put("id", "nope")
+            put("type", "ping")
+            put("ts", 1)
+            put("extra", 1)
+        }
         val errors = SchemaValidator.validate(schema("envelope"), bad)
         listOf("\$.v", "\$.id", "missing required 'payload'", "unexpected property 'extra'").forEach { needle ->
             assertTrue(errors.any { needle in it }, "expected a violation mentioning $needle in $errors")

@@ -53,6 +53,7 @@ object SchemaValidator {
                 val childSchema = properties[key]
                 when {
                     childSchema != null -> errors += validate(childSchema.jsonObject, child, "$path.$key")
+
                     schema["additionalProperties"]?.jsonPrimitive?.booleanOrNull == false ->
                         errors += "$path: unexpected property '$key'"
                 }

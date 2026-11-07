@@ -20,5 +20,4 @@ fun byteArrayOf(data: NSData): ByteArray {
     return bytes
 }
 
-fun nsDataOf(bytes: ByteArray): NSData =
-    if (bytes.isEmpty()) NSData() else bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }
+fun nsDataOf(bytes: ByteArray): NSData = if (bytes.isEmpty()) NSData() else bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }

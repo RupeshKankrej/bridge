@@ -90,7 +90,13 @@ class BridgeService : Service() {
         ServiceWatchdog.schedule(this)
         scope.launch { app.files.state.collect(::onFiles) }
         // Manifest receivers can't get the charger broadcasts since Android 8 either.
-        registerReceiver(charger, IntentFilter().apply { addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) })
+        registerReceiver(
+            charger,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
+            },
+        )
         scope.launch {
             app.features.battery.on.collectLatest { on ->
                 while (on) {
@@ -128,7 +134,8 @@ class BridgeService : Service() {
     /** Heads-up notification with Accept / Decline, so an offer is seen with Bridge in the background. */
     private fun notifyOffer(offer: Offer) {
         fun answer(accept: Boolean) = PendingIntent.getBroadcast(
-            this, if (accept) 10 else 11,
+            this,
+            if (accept) 10 else 11,
             Intent(this, OfferReceiver::class.java).putExtra(OfferReceiver.OFFER, offer.id).putExtra(OfferReceiver.ACCEPT, accept),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )

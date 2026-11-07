@@ -103,13 +103,19 @@ class AndroidNotifications(private val context: Context) : NotificationPort {
     }
 
     override fun action(key: String, index: Int) {
-        val action = forwarded[key]?.actions?.getOrNull(index) ?: run { Log.d(TAG, "action on gone notification"); return }
+        val action = forwarded[key]?.actions?.getOrNull(index) ?: run {
+            Log.d(TAG, "action on gone notification")
+            return
+        }
         fire(action.actionIntent, null)
     }
 
     /** The standard inline-reply handshake: put the text under each RemoteInput's result key and fire the action's intent. */
     override fun reply(key: String, text: String) {
-        val action = forwarded[key]?.reply ?: run { Log.d(TAG, "reply to gone notification"); return }
+        val action = forwarded[key]?.reply ?: run {
+            Log.d(TAG, "reply to gone notification")
+            return
+        }
         val inputs = action.remoteInputs
         val intent = Intent()
         RemoteInput.addResultsToIntent(inputs, intent, Bundle().apply { inputs.forEach { putCharSequence(it.resultKey, text) } })

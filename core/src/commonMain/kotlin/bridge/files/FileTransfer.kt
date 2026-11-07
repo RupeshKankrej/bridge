@@ -2,12 +2,12 @@ package bridge.files
 
 import bridge.identity.Identity
 import bridge.identity.secureRandomBytes
+import bridge.port.ByteStream
 import bridge.port.FileSink
 import bridge.port.FileStorePort
 import bridge.port.KeyStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.protocol.Platform
 import kotlinx.coroutines.CancellationException
@@ -647,5 +647,4 @@ private fun tokensMatch(a: String, b: String) = a.length == b.length && a.indice
 
 private fun <T> json(serializer: kotlinx.serialization.KSerializer<T>, value: T) = localSendJson.encodeToString(serializer, value).encodeToByteArray()
 
-private fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, bytes: ByteArray): T? =
-    runCatching { localSendJson.decodeFromString(serializer, bytes.decodeToString()) }.getOrNull()
+private fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, bytes: ByteArray): T? = runCatching { localSendJson.decodeFromString(serializer, bytes.decodeToString()) }.getOrNull()

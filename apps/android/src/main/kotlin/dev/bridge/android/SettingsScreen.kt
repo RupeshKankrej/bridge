@@ -44,14 +44,23 @@ fun SettingsScreen(app: BridgeApplication, system: SystemState, onAllowBackgroun
                 trailing = { OutlinedButton(onClick = { app.bridge.unpair(peer.fingerprint) }) { Text("Forget") } },
             )
         }
-        SettingRow("Background use", if (system.batteryExempt) "Allowed: stays connected with the screen off" else "Not allowed: Bridge may disconnect with the screen off",
-            R.drawable.ic_battery, onClick = if (system.batteryExempt) null else onAllowBackground)
+        SettingRow(
+            "Background use",
+            if (system.batteryExempt) "Allowed: stays connected with the screen off" else "Not allowed: Bridge may disconnect with the screen off",
+            R.drawable.ic_battery,
+            onClick = if (system.batteryExempt) null else onAllowBackground,
+        )
     }
 
     val notifyOn by app.notifications.enabled.collectAsState()
     Section("Notifications") {
-        SettingRow("Show this tablet's notifications on the Mac", "Encrypted, only to your paired Mac", R.drawable.ic_notifications,
-            checked = notifyOn, onCheckedChange = app.notifications::setEnabled)
+        SettingRow(
+            "Show this tablet's notifications on the Mac",
+            "Encrypted, only to your paired Mac",
+            R.drawable.ic_notifications,
+            checked = notifyOn,
+            onCheckedChange = app.notifications::setEnabled,
+        )
         if (notifyOn && !system.notificationAccess) {
             SettingRow("Allow notification access", "Needed to read notifications", R.drawable.ic_error, onClick = { openAccessSettings(context) })
         }

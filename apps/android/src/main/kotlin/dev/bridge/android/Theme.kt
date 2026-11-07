@@ -2,6 +2,7 @@ package dev.bridge.android
 
 import android.os.Build
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.clickable
 
 /**
  * Material You: on Android 12+ (OxygenOS included) the colours come from the wallpaper like the system's own apps;
@@ -80,8 +80,15 @@ fun SettingRow(
         leadingContent = icon?.let { { Icon(painterResource(it), null, tint = MaterialTheme.colorScheme.primary) } },
         trailingContent = when {
             trailing != null -> trailing
-            checked != null -> { { Switch(checked = checked, onCheckedChange = onCheckedChange) } }
-            onClick != null -> { { Icon(painterResource(R.drawable.ic_chevron_right), null) } }
+
+            checked != null -> {
+                { Switch(checked = checked, onCheckedChange = onCheckedChange) }
+            }
+
+            onClick != null -> {
+                { Icon(painterResource(R.drawable.ic_chevron_right), null) }
+            }
+
             else -> null
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),

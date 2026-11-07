@@ -87,9 +87,11 @@ class ShareActivity : ComponentActivity() {
         Intent.ACTION_SEND -> listOfNotNull(
             if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra(Intent.EXTRA_STREAM),
         )
+
         Intent.ACTION_SEND_MULTIPLE ->
             (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM))
                 .orEmpty()
+
         else -> emptyList()
     }
 }

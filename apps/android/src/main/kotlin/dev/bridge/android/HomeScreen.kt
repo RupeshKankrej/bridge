@@ -78,6 +78,7 @@ fun HomeScreen(
                 }
             }
         }
+
         state.paired.isEmpty() -> Section("Pair with your Mac") {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("On the Mac: menu-bar icon → Pair a device…, then scan its QR code.")
@@ -87,7 +88,9 @@ fun HomeScreen(
                     Text("  Scan QR code")
                 }
                 OutlinedTextField(
-                    host, { host = it }, singleLine = true,
+                    host,
+                    { host = it },
+                    singleLine = true,
                     label = { Text("Mac address (optional)") },
                     supportingText = { Text("Only if the QR's address doesn't work here, e.g. Wi-Fi that isolates devices") },
                 )
