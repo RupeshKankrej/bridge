@@ -104,9 +104,9 @@ The macOS and Android apps differ only in their UI shell and platform adapters; 
 
 **Security model**
 
-- Each device generates an Ed25519 identity key pair on first launch and a self-signed TLS certificate derived from it; the certificate fingerprint is the device ID.
-- Pairing exchanges fingerprints via QR code (shown on one device, scanned by the other) plus a 6-digit confirmation code displayed on both to defeat a QR-swap attack. Trust is stored in the OS keystore (Keychain / Android Keystore).
-- All channels use TLS with certificate pinning against the paired fingerprint. Unpaired devices can discover Bridge but every request is rejected until paired, except LocalSend-compatible file receives, which prompt the user per transfer (LocalSend's own model).
+- Each device generates an ECDSA P-256 identity key pair in the OS keystore on first launch, and `core` builds a self-signed X.509 certificate for it (subject `CN=Bridge`, no expiry). The device ID is the certificate fingerprint: SHA-256 of the DER certificate, 64 lowercase hex characters. P-256 rather than Ed25519 because Keychain/Network.framework TLS and Android Keystore before API 33 cannot use Ed25519 keys (ADR 0005).
+- Pairing exchanges fingerprints via QR code (shown on one device, scanned by the other) plus a 6-digit confirmation code displayed on both to defeat a QR-swap attack. The identity key lives in the OS keystore (Keychain / Android Keystore); the trusted-peer list lives in the Keychain on macOS and in app-private storage on Android (fingerprints are not secret).
+- All channels use TLS 1.3 with certificate pinning against the paired fingerprint. The control channel is mutual TLS: both sides present their certificate, the platform TLS layer accepts any certificate and reports its fingerprint, and `core` decides whether to trust it. Unpaired devices can discover Bridge but every request is rejected until paired, except LocalSend-compatible file receives, which prompt the user per transfer (LocalSend's own model).
 - No data ever leaves the LAN. No analytics, no accounts.
 - Clipboard contents are never persisted to disk on the receiving side beyond the OS clipboard itself.
 
@@ -144,7 +144,7 @@ Binary payloads (clipboard images, thumbnails) are sent as a WebSocket binary fr
 | --- | --- | --- | --- |
 | hello | both | deviceId, name, platform, appVersion, protocolVersion, capabilities[] | 1 |
 | ping / pong | both | none; every 15 s, drop after 3 misses | 1 |
-| pair.request / pair.confirm / pair.reject | both | fingerprint, confirmCode | 1 |
+| pair.request / pair.confirm / pair.reject | both | fingerprint (sender's own), confirmCode (6 digits); see 5.1 | 1 |
 | clipboard.set | both | mime, text or binaryLength, sourceApp | 1 |
 | clipboard.request | both | none; asks the peer to resend current clipboard | 1 |
 | file.offer | both | sessionId, files[] summary; points at the HTTPS file API | 1 |
@@ -180,6 +180,12 @@ Bridge extensions, only between two Bridge peers: resumable uploads via a `Range
 
 - Both apps advertise `_bridge._tcp` with TXT records: `id` (fingerprint), `name`, `platform`, `v` (protocol), `caps` (comma list). Bridge also advertises `_localsend._tcp` for LocalSend clients.
 - Pairing flow: Mac shows a QR code (fingerprint + IP + port + 6-digit code). Tablet scans it, connects over TLS, sends `pair.request` with its own fingerprint. Both screens show the same 6-digit code; the user taps Confirm on the tablet. Mac stores the tablet's fingerprint; tablet stores the Mac's.
+  - QR text: `bridge://pair?fp=<sha256 hex>&host=<ip>&port=<port>&code=<6 digits>`.
+  - The tablet refuses the connection unless the server certificate's fingerprint equals `fp`; this authenticates the Mac.
+  - After `hello` (whose `deviceId` must equal the TLS certificate fingerprint on both sides), the tablet sends `pair.request {fingerprint, confirmCode}`. The Mac accepts it only while the QR is showing, only if `fingerprint` matches the tablet's client certificate, and only if the code matches; this proves the tablet saw the Mac's screen. A wrong code gets `pair.reject` and the Mac rotates the code (one guess per code).
+  - Confirm on the tablet sends `pair.confirm`; the Mac stores trust and answers with its own `pair.confirm` (`replyTo` set), and only then does the tablet store trust. Cancel on either side sends `pair.reject`.
+  - An unpaired device that connects while no QR is showing gets `error {code: "not_paired"}` and the connection is closed (1008). A device that receives `not_paired` from a peer it trusts forgets that peer.
+- Session: after `hello`, each side sends `ping` every 15 s and closes the connection (1008) after 3 unanswered pings; a connection that sends no `hello` within 15 s is closed. The side that scanned the QR (and so knows the address) reconnects with exponential backoff 1, 2, 4 … 30 s.
 - Either side can initiate; the QR can equally be shown on the tablet and scanned by the Mac webcam.
 - Unpairing from either device deletes the stored key and closes the session.
 - Reconnect: on network change or app start, resolve the paired peer via mDNS; fall back to the last known IP for 30 s.
@@ -272,7 +278,7 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 
 ## 6. Platform specifics
 
-**Shared core (`core/`, Kotlin Multiplatform)** — targets `jvm` for tests, `android`, `macosArm64`/`macosX64` and later `iosArm64`. Contains: protocol models and codec (kotlinx.serialization), session state machine, pairing, clipboard/notification/input/media modules, LocalSend HTTP client and server (Ktor), discovery interface. Platform code implements small `expect`/`actual` interfaces: `ClipboardPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`. Exposed to Swift as an XCFramework.
+**Shared core (`core/`, Kotlin Multiplatform)** — targets `jvm` for tests, `android`, `macosArm64`/`macosX64` and later `iosArm64`. Contains: protocol models and codec (kotlinx.serialization), session state machine, pairing, clipboard/notification/input/media modules, LocalSend HTTP client and server (Ktor), discovery interface. Platform code implements small port interfaces: `ClipboardPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`, `TransportPort` (the TLS WebSocket itself, because Ktor on Kotlin/Native has no TLS server; ADR 0005). Exposed to Swift as an XCFramework.
 
 **macOS app (`apps/macos/`, Swift 5.10, SwiftUI + AppKit)**
 
@@ -328,9 +334,9 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 | Layer | Choice | Reason |
 | --- | --- | --- |
 | Shared core | Kotlin Multiplatform 2.x, kotlinx.coroutines, kotlinx.serialization, Ktor client + server (CIO engine) | One protocol implementation; Kotlin is closest to the Java you already write; Ktor gives the LocalSend HTTP server for free |
-| Crypto | Ed25519 + X25519 via `libsodium` bindings (KMP), platform TLS stacks | Small, audited, available on all three OSes |
+| Crypto | ECDSA P-256 keys in Keychain / Android Keystore, platform TLS 1.3 stacks (Network.framework, Conscrypt via OkHttp); SHA-256 via CommonCrypto / `MessageDigest` | Hardware-backed keys, no crypto library to ship; see ADR 0005 |
 | macOS UI | SwiftUI + AppKit, Swift Package Manager | Native menu-bar app; XCFramework from KMP |
-| Android UI | Jetpack Compose, Hilt, WorkManager | Standard modern Android |
+| Android UI | Jetpack Compose, Hilt, WorkManager; OkHttp (control-channel WebSocket client); Play services code scanner (QR) | Standard modern Android; OkHttp because Ktor CIO's TLS is 1.2-only |
 | Video | WebRTC (Google prebuilt), VideoToolbox, MediaCodec, scrcpy server | Hardware codecs on both sides; scrcpy is the proven tablet → Mac path |
 | Build | Gradle (core + Android), Xcode + SPM (Mac), GitHub Actions on macOS runners | KMP's Apple targets need a Mac to build |
 
@@ -380,8 +386,8 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 
 **Phase 1 milestones**
 
-- [ ] M1.1 `core` builds for JVM, Android and macOS; `hello`/`ping` round-trip in a JVM test
-- [ ] M1.2 mDNS discovery + QR pairing between the real MacBook and tablet
+- [x] M1.1 `core` builds for JVM, Android and macOS; `hello`/`ping` round-trip in a JVM test
+- [x] M1.2 mDNS discovery + QR pairing between the real MacBook and tablet
 - [ ] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
 - [ ] M1.4 LocalSend server passes interop with the official LocalSend app, both directions
 - [ ] M1.5 Mac menu-bar app and Android foreground service stay connected across sleep/wake

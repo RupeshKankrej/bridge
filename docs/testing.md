@@ -17,6 +17,16 @@
 - [ ] (Phase 2+) notifications, trackpad, media, battery
 - [ ] (Phase 3+) 30-minute mirroring session each direction without disconnect; latency overlay < 100 ms
 
+## M1.2 gate (pairing)
+1. `./gradlew :core:assembleBridgeCoreDebugXCFramework`, then build and run the Mac app (`apps/macos`). Allow Local
+   Network access when macOS asks. The menu-bar icon appears and the tablet shows up under "Nearby" once its app runs.
+2. `./gradlew :apps:android:installDebug`, then open Bridge on the Pad 3 and allow notifications.
+3. Mac: menu bar → Pair a device…. Tablet: Scan QR code. Both show the same 6-digit code; tap Confirm on the tablet.
+- [ ] Both show "Paired with <name>"
+- [ ] Leave both idle 10 minutes (tablet screen on, or Bridge exempted from battery optimisation): still connected
+- [ ] Scan a QR, then change one digit by scanning a stale QR: refused, and the Mac shows a new code
+- [ ] Forget on the Mac: within a few seconds the tablet shows it is no longer trusted
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)
