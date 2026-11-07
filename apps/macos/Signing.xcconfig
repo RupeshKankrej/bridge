@@ -1,0 +1,6 @@
+// Ad-hoc by default, so the project builds anywhere. An ad-hoc build is a new code identity on every rebuild, and macOS
+// then forgets its Accessibility, Local Network and Keychain grants. Put a stable identity in Local.xcconfig (git-ignored):
+//   CODE_SIGN_IDENTITY = Apple Development
+//   DEVELOPMENT_TEAM = <your team ID>
+CODE_SIGN_IDENTITY = -
+#include? "Local.xcconfig"

@@ -146,6 +146,12 @@ Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreService
       on the tablet toasts the switch's name
 - [x] Tablet offline: Services → Send to Tablet opens the popover with "The tablet isn't connected"
 
+## Mac signing (once per developer machine)
+Create `apps/macos/Local.xcconfig` (git-ignored) with `CODE_SIGN_IDENTITY = Apple Development` and `DEVELOPMENT_TEAM = <team>`
+(`security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject`, the OU). Without it the build is ad-hoc
+and every rebuild loses Accessibility, Local Network and Keychain grants. After switching, grant them one last time:
+remove Bridge from Accessibility with −, launch, re-add; Always Allow both Keychain prompts.
+
 ## M2.4 gate (AirDrop visibility, receive folder)
 Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
 After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Network if the tablet can't reach :53318.

@@ -24,3 +24,6 @@ apps/macos/*.xcodeproj/project.xcworkspace/xcuserdata/
 
 # OS
 .DS_Store
+
+# Per-developer signing (apps/macos/Signing.xcconfig)
+apps/macos/Local.xcconfig
