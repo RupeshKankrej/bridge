@@ -11,14 +11,10 @@ import okhttp3.Response
 import okhttp3.TlsVersion
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import java.net.Socket
-import java.security.Principal
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLEngine
-import javax.net.ssl.X509ExtendedKeyManager
 import javax.net.ssl.X509TrustManager
 
 /**
@@ -26,23 +22,7 @@ import javax.net.ssl.X509TrustManager
  * presenting the Keystore identity as the client certificate (mutual TLS).
  */
 class OkHttpTransport(private val keyStore: AndroidKeyStorePort) : TransportPort {
-    private val keyManager = object : X509ExtendedKeyManager() {
-        private val alias = AndroidKeyStorePort.ALIAS
-
-        override fun chooseClientAlias(keyType: Array<String>?, issuers: Array<Principal>?, socket: Socket?) = alias
-
-        override fun chooseEngineClientAlias(keyType: Array<String>?, issuers: Array<Principal>?, engine: SSLEngine?) = alias
-
-        override fun getClientAliases(keyType: String?, issuers: Array<Principal>?) = arrayOf(alias)
-
-        override fun getCertificateChain(alias: String?) = arrayOf(keyStore.certificate())
-
-        override fun getPrivateKey(alias: String?) = keyStore.privateKey()
-
-        override fun getServerAliases(keyType: String?, issuers: Array<Principal>?): Array<String>? = null
-
-        override fun chooseServerAlias(keyType: String?, issuers: Array<Principal>?, socket: Socket?): String? = null
-    }
+    private val keyManager = IdentityKeyManager(keyStore)
 
     private val baseClient = OkHttpClient.Builder()
         // Peers are addressed by IP with a CN=Bridge certificate; identity is the pinned fingerprint.

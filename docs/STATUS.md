@@ -1,8 +1,7 @@
 # Status
 
 **Current phase:** 1 — Foundation
-**Current milestone:** M1.4 — LocalSend server passes interop with the official LocalSend app, both directions.
-Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M1.4c Android adapters and UI — next. The gate runs after M1.4c.
+**Current milestone:** M1.5 — Mac menu-bar app and Android foreground service stay connected across sleep/wake
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -16,13 +15,24 @@ Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M
   copy time with catch-up on reconnect, origin tag, 1 MB cap, `unsupported_type` for unknown message types. Mac
   `NSPasteboard` poller (250 ms); Android listener while in front, "Send clipboard" tile and notification action.
   Device gate passed except the password-manager skip (below). See ADR 0006.
+- M1.4 — LocalSend files, built as M1.4a `core`, M1.4b Mac, M1.4c Android (ADR 0007). LocalSend v2.1 server, client and
+  multicast discovery in `core` over `StreamPort`/`MulticastPort`/`FileStorePort`; plain LocalSend on 53317, paired peers on
+  53319 (client certificate required) with auto-accept and `Upload-Offset` resume. Mac: drag onto the menu-bar icon, Finder
+  Services "Send with Bridge", Accept / Decline card, transfer list. Android: share target, SAF files and folders, offer
+  notification and dialog, transfer list, wake/Wi-Fi locks during transfers. Device gate passed except throughput (below).
 
 ## Known issues
+- M1.4 throughput gate (≥ 40 MB/s) not measured: the home Wi-Fi gives raw TCP of only ~7–8 MB/s between the Mac and the
+  Pad 3, and Bridge runs at that limit. Re-run with the Mac on Ethernet and a faster access point (docs/testing.md, M1.4c
+  checks). Deferred by agreement on 2026-11-07.
 - Passwords copied from a password manager on the Mac still reach the tablet: the manager in use doesn't set
   `org.nspasteboard.ConcealedType`, or sets it on an item the poller doesn't check. Next step: list its pasteboard
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M1.4c built: Android share target, SAF files/folders, offer notification + dialog, transfer list; Bridge ↔ Bridge
+  transfers work both ways (1 GB and 2 GB intact). Throughput gate not met **because of the network**: raw TCP between the devices
+  is ~7–8 MB/s on the current Wi-Fi (Pad 3 link 432/540 Mbps through one AP); Bridge runs at that limit. Needs a better link to judge.
 - 2026-11-07 — M1.4b built: Mac `StreamPort`/`MulticastPort`/`FileStorePort` on Network.framework, menu bar moved to an
   `NSStatusItem` for drag-and-drop, Finder Services "Send with Bridge", offer prompt and transfer list. Paired peers moved
   to their own port 53319 because macOS can't do optional client certificates (ADR 0007 amended). curl → Mac app: 1 GB in

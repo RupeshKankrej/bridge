@@ -58,6 +58,20 @@ Troubleshooting seen on the Pad 3: a failed transfer shows its reason in red in 
 LocalSend means the receiving LocalSend can't write to its save folder: open LocalSend → Settings → Receive and grant
 storage access.
 
+## M1.4c checks (Android)
+Force-stop LocalSend on the tablet first: it holds port 53317 (Bridge says so on its main screen).
+- [x] Tablet → Mac, share sheet (Files → Share → Bridge): goes straight to the paired Mac, no prompt; 1 GB intact
+- [x] Mac → tablet, drag onto the menu-bar icon: no prompt on the tablet; 2 GB intact in Download/Bridge
+- [x] Official LocalSend (LocalSend.app on the Mac, Bridge for Mac quit) ↔ tablet Bridge, both ways: Accept / Decline dialog on the tablet
+- [x] 10 s Wi-Fi drop on the tablet mid-transfer (`adb shell svc wifi disable; sleep 10; svc wifi enable`): 2 GB Mac → tablet completed intact
+- [ ] Throughput ≥ 40 MB/s: **measure the network first** (below). On 2026-11-07 the home Wi-Fi gave the Pad 3 a 432/540 Mbps
+      link and raw TCP managed only ~8 MB/s tablet → Mac and ~7 MB/s Mac → tablet; Bridge reached 5–10 and 10–20 MB/s, i.e. the
+      network's limit. Re-run the gate with the Mac on Ethernet (one wireless hop instead of two) and the tablet near an 80/160 MHz AP.
+
+Raw TCP baseline, no Bridge involved (Python receiver on the Mac times first to last byte):
+`python3 rx.py 5002` on the Mac, then `adb shell "toybox nc <mac-ip> 5002 < /sdcard/Download/<big file>"`.
+The scripts are in the M1.4c PR description.
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)

@@ -116,8 +116,13 @@ class FileTransfer internal constructor(
         scope.launch(Dispatchers.Main) { state.collect { onChange(it) } }
     }
 
+    private var started = false
+
     fun start() {
         scope.launch {
+            if (started) return@launch
+            started = true
+            addPairedPeers()
             streams.listen(port, requireClientCertificate = false) { s -> scope.launch { serve(s, paired = false) } }
             streams.listen(pairedPort, requireClientCertificate = true) { s -> scope.launch { serve(s, paired = true) } }
             multicast.join { data, host -> scope.launch { onDatagram(data, host) } }
@@ -127,7 +132,10 @@ class FileTransfer internal constructor(
 
     /** Asks LocalSend devices to answer again, e.g. from a refresh button. */
     fun refresh() {
-        scope.launch { announce() }
+        scope.launch {
+            addPairedPeers()
+            announce()
+        }
     }
 
     fun send(peer: LocalSendPeer, files: List<OutgoingFile>) {
@@ -216,6 +224,17 @@ class FileTransfer internal constructor(
         announce = announce,
         announcement = announce,
     )
+
+    /**
+     * Paired peers whose address we know (the side that dialled them) are listed without waiting for
+     * multicast, which Android Wi-Fi often drops. A multicast answer later replaces the entry.
+     */
+    private fun addPairedPeers() {
+        val known = _state.value.nearby.map { it.fingerprint }.toSet()
+        val paired = keyStore.trustedPeers().filter { it.host != null && it.fingerprint !in known }
+            .map { LocalSendPeer(it.fingerprint, it.name, null, it.host!!, port) }
+        if (paired.isNotEmpty()) _state.update { it.copy(nearby = it.nearby + paired) }
+    }
 
     private fun announce() = multicast.send(localSendJson.encodeToString(DeviceInfo.serializer(), info(announce = true)).encodeToByteArray())
 
