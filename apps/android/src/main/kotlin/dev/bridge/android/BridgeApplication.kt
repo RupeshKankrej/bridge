@@ -5,6 +5,7 @@ import android.os.Build
 import android.provider.Settings
 import bridge.files.FileTransfer
 import bridge.files.LocalSendPeer
+import bridge.port.InputPort
 import bridge.port.OutgoingFile
 import bridge.protocol.Platform
 import bridge.session.Bridge
@@ -29,6 +30,8 @@ class BridgeApplication : Application() {
             discovery = NsdDiscovery(this),
             clipboard = clipboard,
             notifications = notifications,
+            // The tablet sends input; it never injects any.
+            input = object : InputPort {},
         )
     }
 
