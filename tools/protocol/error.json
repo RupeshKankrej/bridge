@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/error.json",
+  "title": "error payload",
+  "description": "The request this error answers is the envelope's replyTo.",
+  "type": "object",
+  "required": ["code", "message"],
+  "properties": {
+    "code": { "type": "string", "pattern": "^[a-z]+(_[a-z]+)*$", "description": "stable snake_case identifier" },
+    "message": { "type": "string" }
+  },
+  "additionalProperties": false
+}

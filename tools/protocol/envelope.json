@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/envelope.json",
+  "title": "Bridge control-channel envelope",
+  "type": "object",
+  "required": ["v", "id", "type", "ts", "payload"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$", "description": "ULID" },
+    "type": { "type": "string", "pattern": "^[a-z]+(\\.[a-z]+)?$" },
+    "ts": { "type": "integer", "description": "sender epoch millis" },
+    "replyTo": { "type": ["string", "null"] },
+    "binaryLength": { "type": "integer", "minimum": 0 },
+    "mime": { "type": "string" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,26 @@
+# Gradle / Kotlin
+.gradle/
+build/
+**/build/
+.kotlin/
+local.properties
+*.iml
+.idea/
+
+# Xcode / Swift
+apps/macos/DerivedData/
+apps/macos/*.xcodeproj/xcuserdata/
+apps/macos/*.xcodeproj/project.xcworkspace/xcuserdata/
+.swiftpm/
+*.xcframework/
+
+# Secrets — never commit
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*.keystore
+*.jks
+
+# OS
+.DS_Store

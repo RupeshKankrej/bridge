@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/hello.json",
+  "title": "hello payload",
+  "type": "object",
+  "required": ["deviceId", "name", "platform", "appVersion", "protocolVersion", "capabilities"],
+  "properties": {
+    "deviceId": { "type": "string", "description": "certificate fingerprint" },
+    "name": { "type": "string" },
+    "platform": { "type": "string", "enum": ["macos", "android", "ios"] },
+    "appVersion": { "type": "string" },
+    "protocolVersion": { "type": "integer" },
+    "capabilities": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

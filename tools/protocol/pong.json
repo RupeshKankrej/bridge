@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/pong.json",
+  "title": "pong payload",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
