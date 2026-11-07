@@ -183,6 +183,8 @@ After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Netw
       Log any manual reconnect in STATUS with the Diagnostics' last error
 
 ## One-time device checks
-- [ ] Android version reported by the Pad 3 in Settings → About
-- [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)
+- [x] Android version reported by the Pad 3: Android 16, OxygenOS `OPD2415_16.0.10.600(EX01)` (2026-11-07, `adb shell getprop`)
+- [x] `FEATURE_WIFI_AWARE` on the Pad 3: **no** (2026-11-07: not in `pm list features`, no `wifiaware` system service).
+      Blocks both AirDrop tiers (spec §5.10). Re-check after every OxygenOS update:
+      `adb shell pm has-feature android.hardware.wifi.aware`
 - [ ] `Presentation` display support on the Pad 3 (needed for F10)

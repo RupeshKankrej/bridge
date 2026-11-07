@@ -43,6 +43,10 @@
   link share target, links/text from the Mac as notifications; three switches, off by default.
 
 ## Known issues
+- AirDrop (F13) can't work on the Pad 3: its firmware has no Wi-Fi Aware (checked 2026-11-07, OxygenOS 16.0.10.600), which
+  both Tier A (Quick Share) and Tier B (own stack) need. The M2.4 visibility setting stays as plumbing; M3.4 is on hold until
+  an OxygenOS update adds Wi-Fi Aware (`adb shell pm has-feature android.hardware.wifi.aware`). Workaround: LocalSend on the
+  iPhone/iPad sends to and receives from Bridge today.
 - M2.3 media controls — **root cause found 2026-11-07 (M2.5)**: the Mac build is ad-hoc signed, so every rebuild loses its
   Accessibility grant, and `MacMedia` dropped the refusal silently. Fixed: a refused media command now answers
   `permission_missing` and the tablet shows the cause. Remaining: re-grant Accessibility (remove Bridge with −, add it again)

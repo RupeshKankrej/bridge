@@ -132,7 +132,7 @@ private fun AirDropSection(features: Features) {
             if (visibility == Features.AirDrop.EVERYONE && until != 0L) {
                 Button(onClick = { features.setAirDrop(Features.AirDrop.EVERYONE, always = true) }) { Text("Keep Everyone on") }
             }
-            Row { Text("Not available on this tablet yet: Apple devices won't see it in any mode (spec §5.10).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            Row { Text("Not available on this tablet: its firmware has no Wi-Fi Aware, which AirDrop needs. Use LocalSend on an iPhone or iPad meanwhile.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
     }
 }
