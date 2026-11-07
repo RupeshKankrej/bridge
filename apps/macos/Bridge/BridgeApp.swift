@@ -1,33 +1,114 @@
 import AppKit
+import Combine
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 import BridgeCore
 
 @main
 struct BridgeApp: App {
-    @StateObject private var model = BridgeModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    var body: some Scene {
-        // LSUIElement (Info.plist) hides the Dock icon; this scene is the whole UI.
-        MenuBarExtra("Bridge", systemImage: model.isConnected ? "link.circle.fill" : "link.circle") {
-            MenuView(model: model)
-        }
-        .menuBarExtraStyle(.window)
+    // LSUIElement (Info.plist) hides the Dock icon; AppDelegate's status item is the whole UI.
+    var body: some Scene { Settings { EmptyView() } }
+}
+
+/// The menu-bar icon. An NSStatusItem rather than SwiftUI's MenuBarExtra because files are dropped on
+/// the icon, and only AppKit exposes the icon's window to register for drags.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDraggingDestination {
+    private let model = BridgeModel()
+    private var statusItem: NSStatusItem!
+    private let popover = NSPopover()
+    private var services: ServicesProvider?
+    private var subscriptions: Set<AnyCancellable> = []
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let button = statusItem.button!
+        button.target = self
+        button.action = #selector(togglePopover)
+        // The status button's window forwards dragging calls to its delegate (this class).
+        button.window?.registerForDraggedTypes([.fileURL])
+        button.window?.delegate = self
+
+        let hosting = NSHostingController(rootView: MenuView(model: model))
+        hosting.sizingOptions = .preferredContentSize
+        popover.contentViewController = hosting
+        popover.behavior = .transient
+
+        model.$state.sink { [weak self] _ in self?.updateIcon() }.store(in: &subscriptions)
+        model.onAttention = { [weak self] in self?.showPopover() }
+
+        // Finder → Services → "Send with Bridge" (NSServices in Info.plist).
+        services = ServicesProvider(model: model)
+        NSApp.servicesProvider = services
+        NSUpdateDynamicServices()
+    }
+
+    private func updateIcon() {
+        let name = model.isConnected ? "link.circle.fill" : "link.circle"
+        statusItem?.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "Bridge")
+    }
+
+    @objc private func togglePopover() {
+        if popover.isShown { popover.performClose(nil) } else { showPopover() }
+    }
+
+    private func showPopover() {
+        guard let button = statusItem.button, !popover.isShown else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    // MARK: Drop files on the icon
+
+    private func fileURLs(_ info: NSDraggingInfo) -> [URL] {
+        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { fileURLs(sender).isEmpty ? [] : .copy }
+
+    func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = fileURLs(sender)
+        model.send(urls)
+        return !urls.isEmpty
+    }
+}
+
+/// Target of the Finder Services item. Its title is fixed in Info.plist, so it can't name the device;
+/// the popover asks which device unless exactly one paired device is nearby.
+final class ServicesProvider: NSObject {
+    private let model: BridgeModel
+
+    init(model: BridgeModel) { self.model = model }
+
+    @objc func sendFiles(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        // AppKit calls service handlers on the main thread.
+        MainActor.assumeIsolated { model.send(urls) }
     }
 }
 
 @MainActor
 final class BridgeModel: ObservableObject {
     @Published private(set) var state: BridgeState?
+    @Published private(set) var files: FilesState?
     @Published private(set) var problem: String?
+    /// Files dropped or sent via Services, waiting for the user to pick a device.
+    @Published private(set) var pendingSend: [MacOutgoingFile] = []
+    /// Opens the popover: an incoming offer or a send needs the user.
+    var onAttention: () -> Void = {}
     private let bridge: Bridge
+    private let fileTransfer: FileTransfer
     private let activity: NSObjectProtocol
+    private var subscriptions: Set<AnyCancellable> = []
 
     var isConnected: Bool { state?.paired.contains { $0.online } ?? false }
 
     init() {
         let keyStore = MacKeyStore()
         let network = MacNetwork(identity: keyStore.tlsIdentity)
+        let fileProblems = PassthroughSubject<String, Never>()
         bridge = Bridge(
             name: Host.current().localizedName ?? "Mac",
             platform: .macos,
@@ -37,6 +118,16 @@ final class BridgeModel: ObservableObject {
             discovery: network,
             clipboard: MacClipboard()
         )
+        // After Bridge, which creates the identity on first launch.
+        fileTransfer = FileTransfer(
+            name: Host.current().localizedName ?? "Mac",
+            platform: .macos,
+            deviceModel: "Mac",
+            keyStore: keyStore,
+            streams: MacStreams(identity: keyStore.tlsIdentity) { fileProblems.send($0) },
+            multicast: MacMulticast(),
+            store: MacFileStore()
+        )
         // App Nap would stretch the 15 s heartbeat timers of a windowless app until the tablet drops us.
         activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep, reason: "Keep the tablet session alive")
         bridge.observe { [weak self] state in
@@ -44,7 +135,42 @@ final class BridgeModel: ObservableObject {
             MainActor.assumeIsolated { self?.state = state }
         }
         bridge.start()
+        fileTransfer.observe { [weak self] files in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let newOffer = files.offer != nil && files.offer?.id != self.files?.offer?.id
+                self.files = files
+                if newOffer { self.onAttention() }
+            }
+        }
+        fileTransfer.start()
+        fileProblems.receive(on: DispatchQueue.main).sink { [weak self] in self?.problem = $0 }.store(in: &subscriptions)
     }
+
+    func isPaired(_ peer: LocalSendPeer) -> Bool { state?.paired.contains { $0.fingerprint == peer.fingerprint } ?? false }
+
+    /// Sends straight to the paired device if exactly one is nearby; otherwise asks in the popover.
+    func send(_ urls: [URL]) {
+        let outgoing = MacOutgoingFile.expand(urls)
+        guard !outgoing.isEmpty else { return }
+        let paired = (files?.nearby ?? []).filter(isPaired)
+        if paired.count == 1 {
+            fileTransfer.send(peer: paired[0], files: outgoing)
+        } else {
+            pendingSend = outgoing
+        }
+        onAttention()
+    }
+
+    func send(to peer: LocalSendPeer) {
+        fileTransfer.send(peer: peer, files: pendingSend)
+        pendingSend = []
+    }
+
+    func cancelPendingSend() { pendingSend = [] }
+    func refreshNearby() { fileTransfer.refresh() }
+    func respond(_ offer: Offer, accept: Bool) { fileTransfer.respond(offerId: offer.id, accept: accept) }
+    func cancel(_ transfer: Transfer) { fileTransfer.cancel(transferId: transfer.id) }
 
     func openPairing() {
         guard let ip = lanIPv4Address() else {
@@ -90,6 +216,8 @@ struct MenuView: View {
                     Button("Pair a device…") { model.openPairing() }
                 }
 
+                FilesSection(model: model)
+
                 if let message = model.problem ?? state.message {
                     Text(message).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
@@ -107,7 +235,7 @@ struct MenuView: View {
             Button("Quit Bridge") { NSApp.terminate(nil) }
         }
         .padding()
-        .frame(width: 280)
+        .frame(width: 320)
     }
 
     private func code(_ code: String) -> some View {
