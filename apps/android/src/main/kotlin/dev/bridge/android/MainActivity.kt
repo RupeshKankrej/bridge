@@ -46,6 +46,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        (application as BridgeApplication).clipboard.setForeground(true)
+    }
+
+    override fun onPause() {
+        (application as BridgeApplication).clipboard.setForeground(false)
+        super.onPause()
+    }
+
     /** Play services draws the camera UI, so Bridge needs no CAMERA permission. */
     private fun scan() {
         val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()

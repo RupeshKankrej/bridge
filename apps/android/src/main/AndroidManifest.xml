@@ -32,5 +32,25 @@
             android:name=".BridgeService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Transparent and outside the app's task, so it doesn't bring MainActivity forward. -->
+        <activity
+            android:name=".ClipboardActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <service
+            android:name=".SendClipboardTile"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_send"
+            android:label="Send clipboard"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
