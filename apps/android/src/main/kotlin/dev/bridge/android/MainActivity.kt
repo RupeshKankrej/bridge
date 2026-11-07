@@ -126,6 +126,8 @@ private fun HomeScreen(app: BridgeApplication, onScan: () -> Unit) {
             OutlinedButton(onClick = { pickFolder.launch(null) }) { Text("Send folder") }
         }
         Text("Received files go to Download/Bridge", style = MaterialTheme.typography.bodySmall)
+        val filesProblem by app.filesProblem.collectAsState()
+        filesProblem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         FilesPanel(app)
     }
 }

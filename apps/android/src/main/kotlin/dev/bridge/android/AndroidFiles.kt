@@ -45,7 +45,7 @@ private val io = Executors.newCachedThreadPool { r -> Thread(r, "bridge-files").
  * StreamPort on platform TLS 1.3 sockets (Conscrypt). Server and client present the Keystore identity;
  * any peer certificate is accepted and core pins fingerprints.
  */
-class AndroidStreams(keyStore: AndroidKeyStorePort) : StreamPort {
+class AndroidStreams(keyStore: AndroidKeyStorePort, private val onProblem: (String) -> Unit) : StreamPort {
     private val tls: SSLContext by lazy {
         val anyone = object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
@@ -66,6 +66,7 @@ class AndroidStreams(keyStore: AndroidKeyStorePort) : StreamPort {
             }
         } catch (e: IOException) {
             Log.e(TAG, "can't listen on $port", e)
+            onProblem("Can't receive files on port $port: it's in use (is LocalSend running on this tablet?)")
             return
         }
         thread(name = "bridge-files-accept-$port", isDaemon = true) {
@@ -241,8 +242,18 @@ class UriFile(
     }
 
     companion object {
-        /** A single document (SAF pick or share). Null if its size is unknown, since LocalSend needs it up front. */
-        fun of(resolver: ContentResolver, uri: Uri, hold: Boolean): UriFile? {
+        /**
+         * A single document (SAF pick or share). Null if we may not read it, or its size is unknown (LocalSend
+         * needs it up front).
+         */
+        fun of(resolver: ContentResolver, uri: Uri, hold: Boolean): UriFile? = try {
+            read(resolver, uri, hold)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "no read access to a shared file: ${e.message}")
+            null
+        }
+
+        private fun read(resolver: ContentResolver, uri: Uri, hold: Boolean): UriFile? {
             var name: String? = null
             var size = -1L
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->

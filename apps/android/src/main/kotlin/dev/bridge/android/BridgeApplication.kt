@@ -33,8 +33,14 @@ class BridgeApplication : Application() {
     /** Created after [bridge], which creates the identity on first launch. */
     val files: FileTransfer by lazy {
         bridge
-        FileTransfer(deviceName, Platform.ANDROID, Build.MODEL, keyStore, AndroidStreams(keyStore), AndroidMulticast(this), MediaStoreFileStore(contentResolver))
+        val streams = AndroidStreams(keyStore) { _filesProblem.value = it }
+        FileTransfer(deviceName, Platform.ANDROID, Build.MODEL, keyStore, streams, AndroidMulticast(this), MediaStoreFileStore(contentResolver))
     }
+
+    private val _filesProblem = MutableStateFlow<String?>(null)
+
+    /** e.g. LocalSend on this tablet holds port 53317. */
+    val filesProblem: StateFlow<String?> = _filesProblem.asStateFlow()
 
     private val _pendingSend = MutableStateFlow<List<OutgoingFile>>(emptyList())
 
