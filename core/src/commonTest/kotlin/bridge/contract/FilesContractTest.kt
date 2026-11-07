@@ -123,6 +123,8 @@ class FilesContractTest {
         settle()
         assertEquals(TransferStatus.FAILED, p.tab.state.last().status)
         assertEquals(TransferStatus.FAILED, p.mac.state.last().status)
+        assertNotNull(p.tab.state.last().error, "the sender says why")
+        assertTrue(p.mac.state.last().error!!.contains("connection to Pad lost"))
         assertTrue(p.mac.store.files.isEmpty())
         assertEquals(0, p.mac.store.partials)
     }

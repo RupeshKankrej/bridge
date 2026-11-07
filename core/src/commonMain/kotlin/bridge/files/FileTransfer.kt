@@ -64,6 +64,8 @@ data class Transfer(
     val files: List<TransferFile>,
     val status: TransferStatus,
     val bytesPerSecond: Long = 0,
+    /** Why it failed, worded for the user; the last failure if several files failed. */
+    val error: String? = null,
 )
 
 data class TransferFile(val name: String, val size: Long, val done: Long = 0, val status: TransferStatus = TransferStatus.WAITING)
@@ -155,6 +157,7 @@ class FileTransfer internal constructor(
     private class Live(val id: String, val peerName: String, val incoming: Boolean, val files: MutableList<TransferFile>) {
         var status = TransferStatus.WAITING
         var speed = 0L
+        var error: String? = null
         var mark = TimeSource.Monotonic.markNow()
         var markBytes = 0L
         val total get() = files.sumOf { it.done }
@@ -168,7 +171,7 @@ class FileTransfer internal constructor(
         return l
     }
 
-    private fun snapshot(l: Live) = Transfer(l.id, l.peerName, l.incoming, l.files.toList(), l.status, l.speed)
+    private fun snapshot(l: Live) = Transfer(l.id, l.peerName, l.incoming, l.files.toList(), l.status, l.speed, l.error)
 
     private fun publish(l: Live) = _state.update { s -> s.copy(transfers = s.transfers.map { if (it.id == l.id) snapshot(l) else it }) }
 
@@ -190,8 +193,9 @@ class FileTransfer internal constructor(
         publish(l)
     }
 
-    private fun finish(l: Live, status: TransferStatus) {
+    private fun finish(l: Live, status: TransferStatus, error: String? = null) {
         l.status = status
+        if (error != null) l.error = error
         l.speed = 0
         l.files.indices.forEach { i ->
             if (l.files[i].status !in FINAL) l.files[i] = l.files[i].copy(status = if (status == TransferStatus.DONE) TransferStatus.FAILED else status)
@@ -382,7 +386,7 @@ class FileTransfer internal constructor(
                 setFile(s.live, f.index, TransferStatus.PAUSED, f.received)
                 idleTimeout(s)
             } else {
-                failFile(s, f)
+                failFile(s, f, "connection to ${s.live.peerName} lost (${e.message})")
             }
             throw e
         } catch (e: CancellationException) {
@@ -391,7 +395,7 @@ class FileTransfer internal constructor(
         } catch (e: Exception) {
             // Over-long body (400) or the receive folder failed, e.g. disk full (500).
             f.stream = null
-            if (!s.ended) failFile(s, f)
+            if (!s.ended) failFile(s, f, if (e is IllegalArgumentException) "${f.path}: ${e.message}" else "couldn't save ${f.path}: ${e.message}")
             return refuse(http, if (e is IllegalArgumentException) 400 else 500)
         }
         f.stream = null
@@ -416,7 +420,8 @@ class FileTransfer internal constructor(
         return true
     }
 
-    private fun failFile(s: Inbound, f: InFile) {
+    private fun failFile(s: Inbound, f: InFile, reason: String) {
+        s.live.error = reason
         f.sink?.let { closeQuietly(it) }
         f.sink = null
         f.finished = true
@@ -437,11 +442,11 @@ class FileTransfer internal constructor(
         s.idle?.cancel()
         s.idle = scope.launch {
             delay(SESSION_IDLE)
-            if (s.files.values.none { it.stream != null }) end(s, TransferStatus.FAILED)
+            if (s.files.values.none { it.stream != null }) end(s, TransferStatus.FAILED, "${s.live.peerName} stopped sending")
         }
     }
 
-    private fun end(s: Inbound, status: TransferStatus) {
+    private fun end(s: Inbound, status: TransferStatus, error: String? = null) {
         if (s.ended) return
         s.ended = true
         if (inbound === s) inbound = null
@@ -452,7 +457,7 @@ class FileTransfer internal constructor(
             f.sink?.let { closeQuietly(it) }
             f.sink = null
         }
-        finish(s.live, status)
+        finish(s.live, status, error)
     }
 
     private fun closeQuietly(sink: FileSink) {
@@ -471,9 +476,11 @@ class FileTransfer internal constructor(
                 200 -> Unit
                 204 -> return finish(l, TransferStatus.DONE)
                 403 -> return finish(l, TransferStatus.DECLINED)
-                else -> return finish(l, TransferStatus.FAILED)
+                409 -> return finish(l, TransferStatus.FAILED, "${peer.alias} is busy with another transfer")
+                else -> return finish(l, TransferStatus.FAILED, "${peer.alias} answered HTTP ${head.status}")
             }
-            val r = decode(PrepareUploadResponse.serializer(), resp) ?: return finish(l, TransferStatus.FAILED)
+            val r = decode(PrepareUploadResponse.serializer(), resp)
+                ?: return finish(l, TransferStatus.FAILED, "${peer.alias} sent a reply Bridge can't read")
             sessionId = r.sessionId
             val resumable = head.headers[RESUME_HEADER.lowercase()] == "1"
             files.forEachIndexed { i, f ->
@@ -485,6 +492,7 @@ class FileTransfer internal constructor(
                     throw e
                 } catch (e: Exception) {
                     // Like LocalSend: one failed file doesn't stop the rest.
+                    l.error = "${f.path}: ${reason(e)}"
                     setFile(l, i, TransferStatus.FAILED)
                 }
             }
@@ -498,7 +506,7 @@ class FileTransfer internal constructor(
             }
             throw e
         } catch (e: Exception) {
-            finish(l, TransferStatus.FAILED)
+            finish(l, TransferStatus.FAILED, "can't reach ${peer.alias} at ${peer.host}:${filesPort(peer)}: ${reason(e)}")
         }
     }
 
@@ -589,6 +597,8 @@ class FileTransfer internal constructor(
 }
 
 private val FINAL = setOf(TransferStatus.DONE, TransferStatus.FAILED, TransferStatus.CANCELLED, TransferStatus.DECLINED)
+
+private fun reason(e: Exception) = e.message ?: e::class.simpleName ?: "unknown error"
 
 private fun newId() = secureRandomBytes(16).toHexString()
 
