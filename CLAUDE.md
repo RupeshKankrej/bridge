@@ -66,7 +66,7 @@ Android shells, stays connected across sleep/wake.
 5. **Security defaults:** TLS 1.3 everywhere, certificate pinning against the paired fingerprint,
    keys in Keychain / Android Keystore, nothing secret in logs. Never log clipboard contents.
 6. **`core` has no platform imports.** Platform behaviour goes behind the `*Port` interfaces
-   (`ClipboardPort`, `TransportPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`).
+   (`ClipboardPort`, `TransportPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`, `StreamPort`, `MulticastPort`, `FileStorePort`).
 7. **Don't touch private Apple APIs** (`MediaRemote`, `CGVirtualDisplay`) outside a feature flag,
    and never in Phase 1 or 2.
 8. **Never commit** keys, certificates, signing identities, `local.properties`, or the
@@ -100,7 +100,7 @@ Android shells, stays connected across sleep/wake.
 cd apps/macos && xcodebuild -scheme Bridge -configuration Debug build
 
 # interop
-./gradlew :core:localSendInteropTest    # needs LocalSend CLI on PATH; see docs/testing.md
+./gradlew :core:localSendInteropTest    # interactive: click in the LocalSend app; see docs/testing.md
 ```
 
 Tests to write with every feature: codec round-trip for new message types, state-machine tests
