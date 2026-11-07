@@ -76,6 +76,27 @@ class FilesContractTest {
     }
 
     @Test
+    fun pairedPeerWithAKnownAddressIsListedWithoutMulticast() = runTest {
+        val scope: CoroutineScope = backgroundScope
+        val io = StandardTestDispatcher(testScheduler)
+        val net = StreamNet(scope)
+        val mac = FilesNode(net, "10.0.0.1", "Mac", scope, io)
+        // The tablet dialled the Mac when pairing, so it stored the Mac's address. The Mac never starts
+        // (no multicast at all), yet the tablet lists it and can send to it once it listens.
+        val tab = FilesNode(net, "10.0.0.2", "Pad", scope, io)
+        tab.keyStore.saveTrustedPeer(TrustedPeer(mac.id, "Mac", host = "10.0.0.1", port = 53318))
+        mac.keyStore.saveTrustedPeer(TrustedPeer(tab.id, "Pad"))
+        tab.files.start()
+        runCurrent()
+        assertEquals(listOf("Mac" to "10.0.0.1"), tab.state.nearby.map { it.alias to it.host })
+        mac.files.start()
+        runCurrent()
+        tab.files.send(tab.state.peer(mac.id), listOf(BytesFile("a", ByteArray(5))))
+        settle()
+        assertEquals(TransferStatus.DONE, tab.state.last().status, tab.state.last().error)
+    }
+
+    @Test
     fun pairedPeerAutoAcceptsFilesAndFolders() = runTest {
         val p = nodes()
         val a = Random.nextBytes(700_000)
