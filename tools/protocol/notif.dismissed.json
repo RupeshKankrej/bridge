@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/notif.dismissed.json",
+  "title": "notif.dismissed payload",
+  "description": "Either side: the notification was dismissed there.",
+  "type": "object",
+  "required": ["key"],
+  "properties": { "key": { "type": "string", "description": "Android StatusBarNotification key" } },
+  "additionalProperties": false
+}

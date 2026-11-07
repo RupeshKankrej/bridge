@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/notif.posted.json",
+  "title": "notif.posted payload",
+  "description": "Tablet → Mac. A repost with the same key replaces the shown notification. The app icon, if any, follows as a binary frame: envelope binaryLength (at most 65536) and mime image/png.",
+  "type": "object",
+  "required": ["key", "app", "title", "text"],
+  "properties": {
+    "key": { "type": "string", "description": "Android StatusBarNotification key" },
+    "app": { "type": "string", "description": "app label, e.g. WhatsApp" },
+    "title": { "type": "string" },
+    "text": { "type": "string" },
+    "actions": { "type": "array", "items": { "type": "string" }, "description": "titles of the actions without a RemoteInput; notif.action indexes into this" },
+    "replyable": { "type": "boolean", "description": "an action takes a RemoteInput; reached with notif.reply" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/notif.reply.json",
+  "title": "notif.reply payload",
+  "description": "Mac → tablet: send text through the notification's RemoteInput.",
+  "type": "object",
+  "required": ["key", "replyText"],
+  "properties": {
+    "key": { "type": "string", "description": "Android StatusBarNotification key" },
+    "replyText": { "type": "string" }
+  },
+  "additionalProperties": false
+}

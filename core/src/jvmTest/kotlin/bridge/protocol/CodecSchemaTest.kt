@@ -53,6 +53,17 @@ class CodecSchemaTest {
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RJ", ts = 1_762_440_019_000, message = ClipboardSet(TEXT_MIME, "héllo \"wörld\"\n✓")),
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RK", ts = 1_762_440_019_100, message = ClipboardSet(TEXT_MIME, "x", sourceApp = "com.apple.Safari")),
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RM", ts = 1_762_440_020_000, message = ClipboardRequest),
+        Envelope(
+            id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RN",
+            ts = 1_762_440_021_000,
+            message = NotifPosted("0|com.whatsapp|1|chat|10123", "WhatsApp", "Asha", "Lunch? 🍜", listOf("Mark as read", "Mute"), replyable = true),
+            binaryLength = 1834,
+            mime = PNG_MIME,
+        ),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RP", ts = 1_762_440_021_100, message = NotifPosted("k", "Clock", "Alarm", "")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RQ", ts = 1_762_440_022_000, message = NotifDismissed("0|com.whatsapp|1|chat|10123")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RR", ts = 1_762_440_023_000, message = NotifAction("0|com.whatsapp|1|chat|10123", 1)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RS", ts = 1_762_440_024_000, message = NotifReply("0|com.whatsapp|1|chat|10123", "On my way")),
     )
 
     @Test

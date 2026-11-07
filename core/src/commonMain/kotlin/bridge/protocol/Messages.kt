@@ -82,3 +82,40 @@ data class ClipboardSet(val mime: String, val text: String? = null, val sourceAp
 @Serializable
 @SerialName("clipboard.request")
 data object ClipboardRequest : Message
+
+/** Icon cap for `notif.posted` (spec §5.4): a 32 px PNG is a few KB; anything far larger is refused. */
+const val MAX_ICON_BYTES = 65_536
+
+const val PNG_MIME = "image/png"
+
+/**
+ * A notification posted on the tablet (spec §5.4). [key] is Android's notification key; a repost with the same
+ * key replaces the shown one. [actions] are the titles of the actions without a RemoteInput, in order; `notif.action`
+ * indexes into it. [replyable]: one action takes a RemoteInput, reached with `notif.reply`. The app icon, if any,
+ * follows as a binary frame (envelope `binaryLength`, `mime` image/png).
+ */
+@Serializable
+@SerialName("notif.posted")
+data class NotifPosted(
+    val key: String,
+    val app: String,
+    val title: String,
+    val text: String,
+    val actions: List<String> = emptyList(),
+    val replyable: Boolean = false,
+) : Message
+
+/** Either side: the notification [key] was dismissed there. */
+@Serializable
+@SerialName("notif.dismissed")
+data class NotifDismissed(val key: String) : Message
+
+/** Mac → tablet: run action [actionIndex] of `notif.posted.actions`. */
+@Serializable
+@SerialName("notif.action")
+data class NotifAction(val key: String, val actionIndex: Int) : Message
+
+/** Mac → tablet: send [replyText] through the notification's RemoteInput. */
+@Serializable
+@SerialName("notif.reply")
+data class NotifReply(val key: String, val replyText: String) : Message

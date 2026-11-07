@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/notif.action.json",
+  "title": "notif.action payload",
+  "description": "Mac → tablet: run one of notif.posted's actions.",
+  "type": "object",
+  "required": ["key", "actionIndex"],
+  "properties": {
+    "key": { "type": "string", "description": "Android StatusBarNotification key" },
+    "actionIndex": { "type": "integer", "minimum": 0, "description": "index into notif.posted actions" }
+  },
+  "additionalProperties": false
+}
