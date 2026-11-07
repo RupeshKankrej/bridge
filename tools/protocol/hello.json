@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["deviceId", "name", "platform", "appVersion", "protocolVersion", "capabilities"],
   "properties": {
-    "deviceId": { "type": "string", "description": "certificate fingerprint" },
+    "deviceId": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "certificate SHA-256, lowercase hex" },
     "name": { "type": "string" },
     "platform": { "type": "string", "enum": ["macos", "android", "ios"] },
     "appVersion": { "type": "string" },

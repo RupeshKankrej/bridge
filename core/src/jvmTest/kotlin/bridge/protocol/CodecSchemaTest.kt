@@ -13,6 +13,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+private const val FP_MAC = "3f9a0c5b1e7d2a4c6b8e0f1a3c5e7092b4d6f8a0c2e4f6a8b0d2e4f6a8c0e2f4"
+private const val FP_TAB = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
 class CodecSchemaTest {
     private val protocolDir = File(System.getProperty("bridge.protocolDir") ?: error("run via Gradle: bridge.protocolDir not set"))
 
@@ -23,7 +26,7 @@ class CodecSchemaTest {
             id = "01JBV0R0Z7Q4X8K3M5N6P7Q8R9",
             ts = 1_762_440_000_000,
             message = Hello(
-                deviceId = "SHA256:3f9a0c",
+                deviceId = FP_MAC,
                 name = "Rupesh's MacBook Air",
                 platform = Platform.MACOS,
                 appVersion = "0.1.0",
@@ -38,6 +41,14 @@ class CodecSchemaTest {
             ts = 1_762_440_016_000,
             message = ProtocolError(code = "unsupported_type", message = "unknown type 'foo.bar'"),
             replyTo = "01JBV0R0Z7Q4X8K3M5N6P7Q8RB",
+        ),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RF", ts = 1_762_440_017_000, message = PairRequest(FP_TAB, "042917")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RG", ts = 1_762_440_018_000, message = PairConfirm(FP_TAB, "042917")),
+        Envelope(
+            id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RH",
+            ts = 1_762_440_018_100,
+            message = PairReject(FP_MAC, "042917"),
+            replyTo = "01JBV0R0Z7Q4X8K3M5N6P7Q8RF",
         ),
     )
 

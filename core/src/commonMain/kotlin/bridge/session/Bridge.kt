@@ -1,0 +1,393 @@
+package bridge.session
+
+import bridge.identity.Identity
+import bridge.identity.secureRandomBytes
+import bridge.port.Connection
+import bridge.port.ConnectionListener
+import bridge.port.DiscoveredPeer
+import bridge.port.DiscoveryPort
+import bridge.port.KeyStorePort
+import bridge.port.TransportPort
+import bridge.port.TrustedPeer
+import bridge.protocol.Codec
+import bridge.protocol.Envelope
+import bridge.protocol.Hello
+import bridge.protocol.Message
+import bridge.protocol.PROTOCOL_VERSION
+import bridge.protocol.PairConfirm
+import bridge.protocol.PairReject
+import bridge.protocol.PairRequest
+import bridge.protocol.Ping
+import bridge.protocol.Platform
+import bridge.protocol.Pong
+import bridge.protocol.ProtocolError
+import bridge.protocol.newUlid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+
+/** Control channel port: LocalSend's 53317 + 1 (spec §3). */
+const val CONTROL_PORT = 53318
+const val CLOSE_NORMAL = 1000
+const val CLOSE_POLICY = 1008
+const val CLOSE_VERSION_MISMATCH = 4001
+
+internal val HEARTBEAT_INTERVAL = 15.seconds
+internal const val MAX_MISSED_PONGS = 3
+internal val MAX_BACKOFF = 30.seconds
+
+data class BridgeState(
+    /** This device's certificate fingerprint. */
+    val deviceId: String,
+    val discovered: List<DiscoveredPeer> = emptyList(),
+    val paired: List<PeerStatus> = emptyList(),
+    /** Host side: the invite to show as a QR code while pairing is open. */
+    val invite: PairingInvite? = null,
+    /** Set once the QR has been scanned and the code checked; both sides show [Pairing.code]. */
+    val pairing: Pairing? = null,
+    /** Last failure, worded for the user (spec §7). */
+    val message: String? = null,
+)
+
+data class PeerStatus(val fingerprint: String, val name: String, val online: Boolean)
+
+/** [awaitingLocalConfirm]: this side (the scanner) shows Confirm / Cancel; otherwise it waits for the peer. */
+data class Pairing(val peerName: String, val code: String, val awaitingLocalConfirm: Boolean)
+
+/**
+ * One device's view of the control channel: listens and advertises, dials paired peers with
+ * backoff, and runs the per-connection session state machine (spec §4, §5.1):
+ *
+ *   connect → hello exchange → paired (peer's fingerprint is trusted)
+ *                            → unpaired → pair.request → pair.confirm ×2 → paired
+ *
+ * Every connection pings every 15 s and is dropped after 3 unanswered pings.
+ * All state lives on [scope]'s dispatcher (Main in the apps), so nothing here needs locks.
+ */
+class Bridge internal constructor(
+    private val name: String,
+    private val platform: Platform,
+    private val appVersion: String,
+    private val keyStore: KeyStorePort,
+    private val transport: TransportPort,
+    private val discovery: DiscoveryPort,
+    private val scope: CoroutineScope,
+) {
+    constructor(
+        name: String,
+        platform: Platform,
+        appVersion: String,
+        keyStore: KeyStorePort,
+        transport: TransportPort,
+        discovery: DiscoveryPort,
+    ) : this(name, platform, appVersion, keyStore, transport, discovery, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+
+    private val identity = Identity.loadOrCreate(keyStore)
+    private val myId = identity.fingerprint
+
+    private val _state = MutableStateFlow(BridgeState(myId))
+    val state: StateFlow<BridgeState> = _state.asStateFlow()
+
+    private class Session(val conn: Connection, val invite: PairingInvite?) {
+        val incoming = Channel<String>(Channel.UNLIMITED)
+        var peer: Hello? = null
+        var paired = false
+        var missedPongs = 0
+        var pairingCode: String? = null
+        var confirmSent = false
+    }
+
+    private val online = mutableMapOf<String, Session>()
+    private var pairingSession: Session? = null
+    private val dialers = mutableMapOf<String, Job>()
+    private var started = false
+
+    /** For Swift, which can't collect a Flow: [onChange] runs on the main thread for every state. */
+    fun observe(onChange: (BridgeState) -> Unit) {
+        scope.launch { state.collect { onChange(it) } }
+    }
+
+    fun start() {
+        scope.launch {
+            if (started) return@launch
+            started = true
+            val txt = mapOf("id" to myId, "name" to name, "platform" to platform.name.lowercase(), "v" to "$PROTOCOL_VERSION", "caps" to "")
+            discovery.advertise(CONTROL_PORT, txt)
+            transport.listen(CONTROL_PORT) { conn -> scope.launch { runSession(conn, expected = null, invite = null) } }
+            discovery.browse { peers -> _state.update { s -> s.copy(discovered = peers.filter { it.id != myId }) } }
+            keyStore.trustedPeers().filter { it.host != null }.forEach { keepConnected(it.fingerprint) }
+            refreshPaired()
+        }
+    }
+
+    /** Host side: show a QR for [host] (this device's LAN address). */
+    fun openPairing(host: String) {
+        scope.launch { _state.update { it.copy(invite = PairingInvite(myId, host, CONTROL_PORT, newCode()), message = null) } }
+    }
+
+    fun closePairing() {
+        scope.launch {
+            pairingSession?.let { reject(it) }
+            _state.update { it.copy(invite = null) }
+        }
+    }
+
+    /** Scanner side: [uri] is the QR text. */
+    fun pair(uri: String) {
+        scope.launch {
+            val invite = PairingInvite.parse(uri) ?: return@launch fail("That QR code isn't a Bridge pairing code")
+            _state.update { it.copy(message = null) }
+            val conn = connect(invite.host, invite.port) ?: return@launch
+            runSession(conn, invite.fingerprint, invite)
+            if (keyStore.trustedPeers().any { it.fingerprint == invite.fingerprint }) keepConnected(invite.fingerprint)
+        }
+    }
+
+    /** Scanner side: the user saw the same code on both screens. */
+    fun confirmPairing() {
+        scope.launch {
+            val s = pairingSession?.takeIf { it.invite != null && !it.confirmSent } ?: return@launch
+            s.confirmSent = true
+            send(s, PairConfirm(myId, s.invite!!.code))
+            _state.update { it.copy(pairing = it.pairing?.copy(awaitingLocalConfirm = false)) }
+        }
+    }
+
+    /** Either side: cancel the pairing in progress. */
+    fun rejectPairing() {
+        scope.launch { pairingSession?.let { reject(it) } }
+    }
+
+    /** Forget [fingerprint] and close its session (spec §5.1). */
+    fun unpair(fingerprint: String) {
+        scope.launch {
+            dialers.remove(fingerprint)?.cancel()
+            keyStore.removeTrustedPeer(fingerprint)
+            online[fingerprint]?.let { drop(it, CLOSE_NORMAL, "unpaired") }
+            refreshPaired()
+        }
+    }
+
+    private fun keepConnected(fingerprint: String) {
+        if (dialers[fingerprint]?.isActive == true) return
+        dialers[fingerprint] = scope.launch {
+            var backoff = 1.seconds
+            while (true) {
+                val peer = keyStore.trustedPeers().find { it.fingerprint == fingerprint } ?: break
+                val host = peer.host ?: break
+                val conn = connect(host, peer.port)
+                if (conn != null && runSession(conn, fingerprint, invite = null)) backoff = 1.seconds
+                delay(backoff)
+                backoff = minOf(backoff * 2, MAX_BACKOFF)
+            }
+        }
+    }
+
+    private suspend fun connect(host: String, port: Int): Connection? = suspendCancellableCoroutine { c ->
+        transport.connect(host, port) { conn, error ->
+            if (conn == null) fail("Can't reach $host:$port ($error)")
+            c.resume(conn) { _, value, _ -> value?.close(CLOSE_NORMAL, "cancelled") }
+        }
+    }
+
+    /** Runs one connection until it closes. Returns true if the peer was paired on it. */
+    private suspend fun runSession(conn: Connection, expected: String?, invite: PairingInvite?): Boolean {
+        if (expected != null && conn.peerFingerprint != expected) {
+            conn.close(CLOSE_POLICY, "unexpected certificate")
+            fail(if (invite != null) "The device that answered isn't the one in the QR code" else "A device at the paired address has a different identity")
+            return false
+        }
+        val s = Session(conn, invite)
+        var everPaired = false
+        conn.start(object : ConnectionListener {
+            override fun onText(text: String) {
+                s.incoming.trySend(text)
+            }
+
+            override fun onClosed(reason: String) {
+                s.incoming.close()
+            }
+        })
+        send(s, Hello(myId, name, platform, appVersion, PROTOCOL_VERSION, emptyList()))
+        try {
+            coroutineScope {
+                val heartbeat = launch {
+                    while (true) {
+                        delay(HEARTBEAT_INTERVAL)
+                        if (s.peer == null) return@launch drop(s, CLOSE_POLICY, "no hello")
+                        if (s.missedPongs >= MAX_MISSED_PONGS) return@launch drop(s, CLOSE_POLICY, "heartbeat timeout")
+                        s.missedPongs++
+                        send(s, Ping)
+                    }
+                }
+                for (text in s.incoming) {
+                    handle(s, text)
+                    everPaired = everPaired || s.paired
+                }
+                heartbeat.cancel()
+            }
+        } finally {
+            conn.close(CLOSE_NORMAL, "session ended")
+            s.peer?.let { if (online[it.deviceId] === s) online.remove(it.deviceId) }
+            if (pairingSession === s) endPairing(null)
+            refreshPaired()
+        }
+        return everPaired
+    }
+
+    private fun handle(s: Session, text: String) {
+        val env = Codec.decode(text).getOrElse { return send(s, ProtocolError("invalid_message", "could not decode message")) }
+        if (env.v != PROTOCOL_VERSION) return drop(s, CLOSE_VERSION_MISMATCH, "protocol version ${env.v}")
+        val m = env.message
+        if (s.peer == null && m !is Hello && m !is Ping && m !is Pong) return send(s, ProtocolError("hello_required", "send hello first"), env.id)
+        // Exhaustive on purpose: a new message type must decide here whether it needs a paired session.
+        when (m) {
+            Ping -> send(s, Pong, replyTo = env.id)
+            Pong -> s.missedPongs = 0
+            is Hello -> onHello(s, m)
+            is PairRequest -> onPairRequest(s, m, env.id)
+            is PairConfirm -> onPairConfirm(s, m, env.id)
+            is PairReject -> if (pairingSession === s) {
+                endPairing("${s.peer?.name} declined pairing")
+                rotateCode()
+                drop(s, CLOSE_NORMAL, "pairing rejected")
+            }
+            is ProtocolError -> onPeerError(s, m)
+        }
+    }
+
+    private fun onHello(s: Session, m: Hello) {
+        if (s.peer != null) return
+        if (m.protocolVersion != PROTOCOL_VERSION) return drop(s, CLOSE_VERSION_MISMATCH, "protocol version ${m.protocolVersion}")
+        if (m.deviceId != s.conn.peerFingerprint) return drop(s, CLOSE_POLICY, "deviceId does not match certificate")
+        s.peer = m
+        val trusted = keyStore.trustedPeers().find { it.fingerprint == m.deviceId }
+        when {
+            trusted != null -> {
+                if (trusted.name != m.name) keyStore.saveTrustedPeer(trusted.copy(name = m.name))
+                markPaired(s)
+            }
+            s.invite != null -> {
+                pairingSession?.let { reject(it) }
+                pairingSession = s
+                s.pairingCode = s.invite.code
+                send(s, PairRequest(myId, s.invite.code))
+                _state.update { it.copy(pairing = Pairing(m.name, s.invite.code, awaitingLocalConfirm = true), message = null) }
+            }
+            // Unpaired and nothing to pair with: refuse (spec §3).
+            _state.value.invite == null -> {
+                send(s, ProtocolError("not_paired", "this device is not paired"))
+                drop(s, CLOSE_POLICY, "not paired")
+            }
+        }
+    }
+
+    /** Host side. The code proves the scanner saw this screen; the TLS certificate proves who it is. */
+    private fun onPairRequest(s: Session, m: PairRequest, id: String) {
+        val invite = _state.value.invite
+        val ok = invite != null && !s.paired && s.invite == null && pairingSession == null &&
+            m.fingerprint == s.conn.peerFingerprint && codesMatch(m.confirmCode, invite.code)
+        if (!ok) {
+            send(s, PairReject(myId, safeCode(m.confirmCode)), id)
+            // One guess per code: rotating makes brute force pointless.
+            rotateCode()
+            fail("Refused a pairing attempt from ${s.peer?.name} with the wrong code")
+            return drop(s, CLOSE_POLICY, "pairing refused")
+        }
+        pairingSession = s
+        s.pairingCode = invite.code
+        _state.update { it.copy(pairing = Pairing(s.peer!!.name, invite.code, awaitingLocalConfirm = false), message = null) }
+    }
+
+    private fun onPairConfirm(s: Session, m: PairConfirm, id: String) {
+        val code = s.pairingCode
+        val ok = pairingSession === s && code != null && m.fingerprint == s.conn.peerFingerprint && codesMatch(m.confirmCode, code) &&
+            (s.invite == null || s.confirmSent)
+        if (!ok) {
+            send(s, PairReject(myId, safeCode(m.confirmCode)), id)
+            if (pairingSession === s) endPairing("Pairing failed")
+            rotateCode()
+            return drop(s, CLOSE_POLICY, "unexpected pair.confirm")
+        }
+        val peer = s.peer!!
+        keyStore.saveTrustedPeer(TrustedPeer(peer.deviceId, peer.name, s.invite?.host, s.invite?.port ?: 0))
+        // Host acknowledges so the scanner stores trust only once the host has.
+        if (s.invite == null) send(s, PairConfirm(myId, code), id)
+        endPairing(null)
+        _state.update { it.copy(invite = null) }
+        markPaired(s)
+    }
+
+    private fun onPeerError(s: Session, m: ProtocolError) {
+        val peer = s.peer
+        // Authentic: this connection is pinned to the peer we dialled. It forgot us, so forget it too.
+        if (m.code == "not_paired" && peer != null && s.invite == null) {
+            dialers.remove(peer.deviceId)?.cancel()
+            keyStore.removeTrustedPeer(peer.deviceId)
+            fail("${peer.name} no longer trusts this device; pair again")
+            return drop(s, CLOSE_NORMAL, "not paired")
+        }
+        fail("${peer?.name ?: "Peer"}: ${m.message}")
+    }
+
+    private fun markPaired(s: Session) {
+        s.paired = true
+        val id = s.peer!!.deviceId
+        online.put(id, s)?.takeIf { it !== s }?.let { drop(it, CLOSE_NORMAL, "replaced by a newer connection") }
+        _state.update { it.copy(message = null) }
+        refreshPaired()
+    }
+
+    private fun reject(s: Session) {
+        s.pairingCode?.let { send(s, PairReject(myId, it)) }
+        endPairing(null)
+        rotateCode()
+        drop(s, CLOSE_NORMAL, "pairing cancelled")
+    }
+
+    private fun endPairing(message: String?) {
+        pairingSession = null
+        _state.update { it.copy(pairing = null, message = message ?: it.message) }
+    }
+
+    private fun rotateCode() = _state.update { s -> s.copy(invite = s.invite?.copy(code = newCode())) }
+
+    private fun refreshPaired() = _state.update { s ->
+        s.copy(paired = keyStore.trustedPeers().map { PeerStatus(it.fingerprint, it.name, it.fingerprint in online) })
+    }
+
+    private fun fail(message: String) = _state.update { it.copy(message = message) }
+
+    private fun drop(s: Session, code: Int, reason: String) {
+        s.conn.close(code, reason)
+        s.incoming.close()
+    }
+
+    private fun send(s: Session, m: Message, replyTo: String? = null) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        s.conn.send(Codec.encode(Envelope(newUlid(now), now, m, replyTo)))
+    }
+}
+
+private fun newCode(): String {
+    val n = secureRandomBytes(4).fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) }
+    return (n % 1_000_000).toString().padStart(6, '0')
+}
+
+private fun codesMatch(a: String, b: String): Boolean =
+    a.length == b.length && a.indices.fold(0) { acc, i -> acc or (a[i].code xor b[i].code) } == 0
+
+/** pair.reject echoes the code it refuses; never echo malformed input (schema: 6 digits). */
+private fun safeCode(code: String) = code.takeIf { it.length == 6 && it.all(Char::isDigit) } ?: "000000"

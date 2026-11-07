@@ -15,7 +15,7 @@ sealed interface Message
 @Serializable
 @SerialName("hello")
 data class Hello(
-    /** Certificate fingerprint. */
+    /** SHA-256 of the DER TLS certificate, lowercase hex: the device ID. */
     val deviceId: String,
     val name: String,
     val platform: Platform,
@@ -47,3 +47,19 @@ data class ProtocolError(
     val code: String,
     val message: String,
 ) : Message
+
+/**
+ * Pairing (spec §5.1). All three carry the sender's own certificate fingerprint and the 6-digit
+ * code from the QR invite; `pair.reject` echoes the code it is rejecting.
+ */
+@Serializable
+@SerialName("pair.request")
+data class PairRequest(val fingerprint: String, val confirmCode: String) : Message
+
+@Serializable
+@SerialName("pair.confirm")
+data class PairConfirm(val fingerprint: String, val confirmCode: String) : Message
+
+@Serializable
+@SerialName("pair.reject")
+data class PairReject(val fingerprint: String, val confirmCode: String) : Message
