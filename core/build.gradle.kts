@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -14,14 +16,24 @@ kotlin {
         minSdk = 29
         withHostTest {}
     }
-    macosArm64()
+    val xcf = XCFramework("BridgeCore")
+    macosArm64 {
+        binaries.framework {
+            baseName = "BridgeCore"
+            // Static: linked into the app binary, so Xcode needs no embed step.
+            isStatic = true
+            xcf.add(this)
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.serialization.json)
+            api(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

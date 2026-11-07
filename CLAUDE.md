@@ -66,7 +66,7 @@ Android shells, stays connected across sleep/wake.
 5. **Security defaults:** TLS 1.3 everywhere, certificate pinning against the paired fingerprint,
    keys in Keychain / Android Keystore, nothing secret in logs. Never log clipboard contents.
 6. **`core` has no platform imports.** Platform behaviour goes behind the `*Port` interfaces
-   (`ClipboardPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`).
+   (`ClipboardPort`, `TransportPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`).
 7. **Don't touch private Apple APIs** (`MediaRemote`, `CGVirtualDisplay`) outside a feature flag,
    and never in Phase 1 or 2.
 8. **Never commit** keys, certificates, signing identities, `local.properties`, or the
@@ -96,6 +96,7 @@ Android shells, stays connected across sleep/wake.
 ./gradlew :apps:android:installDebug    # tablet connected via USB or wireless ADB
 
 # macOS
+./gradlew :core:assembleBridgeCoreDebugXCFramework
 cd apps/macos && xcodebuild -scheme Bridge -configuration Debug build
 
 # interop
