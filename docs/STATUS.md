@@ -1,8 +1,7 @@
 # Status
 
 **Current phase:** 1 — Foundation
-**Current milestone:** M1.4 — LocalSend server passes interop with the official LocalSend app, both directions.
-Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M1.4c Android adapters and UI — built. Gate: LocalSend interop with both apps, Bridge ↔ Bridge transfers and resume after a 10 s Wi-Fi drop pass; ≥ 40 MB/s needs a faster Wi-Fi setup to judge.
+**Current milestone:** M1.5 — Mac menu-bar app and Android foreground service stay connected across sleep/wake
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -16,8 +15,16 @@ Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M
   copy time with catch-up on reconnect, origin tag, 1 MB cap, `unsupported_type` for unknown message types. Mac
   `NSPasteboard` poller (250 ms); Android listener while in front, "Send clipboard" tile and notification action.
   Device gate passed except the password-manager skip (below). See ADR 0006.
+- M1.4 — LocalSend files, built as M1.4a `core`, M1.4b Mac, M1.4c Android (ADR 0007). LocalSend v2.1 server, client and
+  multicast discovery in `core` over `StreamPort`/`MulticastPort`/`FileStorePort`; plain LocalSend on 53317, paired peers on
+  53319 (client certificate required) with auto-accept and `Upload-Offset` resume. Mac: drag onto the menu-bar icon, Finder
+  Services "Send with Bridge", Accept / Decline card, transfer list. Android: share target, SAF files and folders, offer
+  notification and dialog, transfer list, wake/Wi-Fi locks during transfers. Device gate passed except throughput (below).
 
 ## Known issues
+- M1.4 throughput gate (≥ 40 MB/s) not measured: the home Wi-Fi gives raw TCP of only ~7–8 MB/s between the Mac and the
+  Pad 3, and Bridge runs at that limit. Re-run with the Mac on Ethernet and a faster access point (docs/testing.md, M1.4c
+  checks). Deferred by agreement on 2026-11-07.
 - Passwords copied from a password manager on the Mac still reach the tablet: the manager in use doesn't set
   `org.nspasteboard.ConcealedType`, or sets it on an item the poller doesn't check. Next step: list its pasteboard
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
