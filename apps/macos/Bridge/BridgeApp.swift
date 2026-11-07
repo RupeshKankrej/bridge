@@ -150,7 +150,7 @@ final class BridgeModel: ObservableObject {
     init() {
         let keyStore = MacKeyStore()
         let network = MacNetwork(identity: keyStore.tlsIdentity)
-        let fileProblems = PassthroughSubject<String, Never>()
+        let problems = PassthroughSubject<String, Never>()
         bridge = Bridge(
             name: Host.current().localizedName ?? "Mac",
             platform: .macos,
@@ -158,7 +158,8 @@ final class BridgeModel: ObservableObject {
             keyStore: keyStore,
             transport: network,
             discovery: network,
-            clipboard: MacClipboard()
+            clipboard: MacClipboard(),
+            notifications: MacNotifications { problems.send($0) }
         )
         // After Bridge, which creates the identity on first launch.
         fileTransfer = FileTransfer(
@@ -166,7 +167,7 @@ final class BridgeModel: ObservableObject {
             platform: .macos,
             deviceModel: "Mac",
             keyStore: keyStore,
-            streams: MacStreams(identity: keyStore.tlsIdentity) { fileProblems.send($0) },
+            streams: MacStreams(identity: keyStore.tlsIdentity) { problems.send($0) },
             multicast: MacMulticast(),
             store: MacFileStore()
         )
@@ -188,7 +189,7 @@ final class BridgeModel: ObservableObject {
         fileTransfer.start()
         watchWakeAndNetwork()
         enableLaunchAtLoginOnFirstRun()
-        fileProblems.receive(on: DispatchQueue.main).sink { [weak self] in self?.problem = $0 }.store(in: &subscriptions)
+        problems.receive(on: DispatchQueue.main).sink { [weak self] in self?.problem = $0 }.store(in: &subscriptions)
     }
 
     /// Sessions from before sleep or on the old network look open but are dead; core pings them and drops the silent ones
