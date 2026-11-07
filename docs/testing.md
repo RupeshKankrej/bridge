@@ -186,5 +186,5 @@ After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Netw
 - [x] Android version reported by the Pad 3: Android 16, OxygenOS `OPD2415_16.0.10.600(EX01)` (2026-11-07, `adb shell getprop`)
 - [x] `FEATURE_WIFI_AWARE` on the Pad 3: **no** (2026-11-07: not in `pm list features`, no `wifiaware` system service).
       Blocks both AirDrop tiers (spec §5.10). Re-check after every OxygenOS update:
-      `adb shell pm has-feature android.hardware.wifi.aware`
+      `adb shell pm has-feature android.hardware.wifi.aware`. Disabled by OnePlus, not missing hardware: see STATUS known issues
 - [ ] `Presentation` display support on the Pad 3 (needed for F10)

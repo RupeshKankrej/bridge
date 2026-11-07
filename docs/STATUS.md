@@ -44,7 +44,11 @@
 
 ## Known issues
 - AirDrop (F13) can't work on the Pad 3: its firmware has no Wi-Fi Aware (checked 2026-11-07, OxygenOS 16.0.10.600), which
-  both Tier A (Quick Share) and Tier B (own stack) need. The M2.4 visibility setting stays as plumbing; M3.4 is on hold until
+  both Tier A (Quick Share) and Tier B (own stack) need. OnePlus disabled it on purpose: the chip (SM8750) supports NAN, but `/vendor/etc/permissions/android.hardware.wifi.aware.xml`
+  has the feature commented out ("Remove for disable the wifi aware function", an OPLUS stability fix) and the Wi-Fi driver
+  config sets `g_nan_config=0`. Only an OxygenOS update can change it; rooting to override both is not pursued (wipes the
+  tablet, fails Play Integrity, and re-enables something OnePlus switched off for stability).
+  The M2.4 visibility setting stays as plumbing; M3.4 is on hold until
   an OxygenOS update adds Wi-Fi Aware (`adb shell pm has-feature android.hardware.wifi.aware`). Workaround: LocalSend on the
   iPhone/iPad sends to and receives from Bridge today.
 - M2.3 media controls — **root cause found 2026-11-07 (M2.5)**: the Mac build is ad-hoc signed, so every rebuild loses its

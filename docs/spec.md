@@ -288,7 +288,8 @@ Goal: with AirDrop sharing turned on, the Pad 3 shows up in the AirDrop sheet of
 | B — Native AirDrop stack | Bridge implements the AirDrop protocol itself: BLE advertisement in Apple's AirDrop format, a Wi-Fi Aware (NAN) session via `WifiAwareManager`, then AirDrop's HTTPS service (`/Discover`, `/Ask`, `/Upload`) with a self-signed cert. Everyone mode only, as above. Validated first with a desktop spike against the open-source OpenDrop/OWL implementation, then ported to Android | Phase 3 spike, ship if the spike passes | High; depends on OxygenOS exposing Wi-Fi Aware to apps |
 
 **Blocked on the Pad 3 (2026-11-07):** its firmware has no Wi-Fi Aware (`FEATURE_WIFI_AWARE` false, no `wifiaware`
-service on OxygenOS 16.0.10.600). Both tiers need it, so neither can work on this tablet until OnePlus enables it; the M3.4
+service on OxygenOS 16.0.10.600): OnePlus comments out the feature in `/vendor/etc/permissions/android.hardware.wifi.aware.xml`
+and sets `g_nan_config=0` in the Wi-Fi driver config, although the SM8750 supports NAN. Both tiers need it, so neither can work on this tablet until OnePlus enables it; the M3.4
 spike is on hold until then. Apple devices reach the tablet through the LocalSend app meanwhile (F3).
 
 Tier A is not available today: checked on 6 Nov 2026, the MacBook does not appear in the Pad 3's Quick Share even with the latest Quick Share. Tier B is therefore the plan of record, with Tier A swapped in the moment Google enables the Pad 3. Tier B is a research task, not a guaranteed feature: Apple can change the protocol, and Wi-Fi Aware support varies per device firmware.
