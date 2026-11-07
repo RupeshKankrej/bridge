@@ -63,6 +63,20 @@ class Lan(val clock: () -> Long) {
         onPeers(adverts.values.toList())
     }
 
+    /** The device at [from] gets a new address (DHCP on another network): its sockets die and mDNS announces [to]. */
+    fun move(from: String, to: String) {
+        servers.keys.filter { it.first == from }.forEach { key -> servers[to to key.second] = servers.remove(key)!! }
+        open.toList().forEach { it.close(1001, "network changed") }
+        adverts.entries.forEach { e -> if (e.value.host == from) e.setValue(e.value.copy(host = to)) }
+        browsers.forEach { it(adverts.values.toList()) }
+    }
+
+    /** mDNS stops answering for [id] (blocked or slow on this network). */
+    fun unadvertise(id: String) {
+        adverts.remove(id)
+        browsers.forEach { it(adverts.values.toList()) }
+    }
+
     internal fun forget(c: LoopConnection) = open.remove(c)
 }
 
@@ -173,7 +187,7 @@ class Device(val lan: Lan, val host: String, name: String, platform: Platform, s
 
     private val discovery = object : DiscoveryPort {
         override fun advertise(port: Int, txt: Map<String, String>) =
-            lan.advertise(DiscoveredPeer(txt.getValue("id"), txt.getValue("name"), txt.getValue("platform")))
+            lan.advertise(DiscoveredPeer(txt.getValue("id"), txt.getValue("name"), txt.getValue("platform"), host, port))
 
         override fun browse(onPeers: (List<DiscoveredPeer>) -> Unit) = lan.browse(onPeers)
     }

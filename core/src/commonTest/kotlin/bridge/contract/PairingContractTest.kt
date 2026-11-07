@@ -42,6 +42,19 @@ internal fun TestScope.pairUp(p: Devices) {
 
 class PairingContractTest {
     @Test
+    fun aTypedAddressOverridesTheQrHostButTheFingerprintIsStillPinned() = runTest {
+        val p = twoDevices()
+        p.mac.bridge.openPairing("192.168.99.1") // the QR names an address the tablet can't reach
+        runCurrent()
+        p.tab.bridge.pair(p.mac.state.invite!!.toUri(), host = p.mac.host)
+        runCurrent()
+        p.tab.bridge.confirmPairing()
+        runCurrent()
+        assertEquals(p.mac.host, p.tab.keyStore.peers.single().host)
+        assertEquals(p.mac.id, p.tab.keyStore.peers.single().fingerprint)
+    }
+
+    @Test
     fun discoversPeersButNotItself() = runTest {
         val p = twoDevices()
         assertEquals(listOf(p.tab.id), p.mac.state.discovered.map { it.id })
@@ -64,7 +77,7 @@ class PairingContractTest {
 
         p.tab.bridge.confirmPairing()
         runCurrent()
-        assertEquals(listOf(PeerStatus(p.mac.id, "MacBook", online = true)), p.tab.state.paired)
+        assertEquals(listOf(PeerStatus(p.mac.id, "MacBook", online = true, host = p.mac.host)), p.tab.state.paired)
         assertEquals(listOf(PeerStatus(p.tab.id, "Pad 3", online = true)), p.mac.state.paired)
         assertNull(p.mac.state.pairing)
         assertNull(p.tab.state.pairing)
