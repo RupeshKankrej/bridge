@@ -13,9 +13,12 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
+import java.net.InetAddress
+import java.net.Socket
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 
@@ -32,6 +35,7 @@ class OkHttpTransport(private val keyStore: AndroidKeyStorePort) : TransportPort
         .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.RESTRICTED_TLS).tlsVersions(TlsVersion.TLS_1_3).build()))
         // Core's 15 s heartbeat decides when a quiet socket is dead.
         .readTimeout(0, TimeUnit.SECONDS)
+        .socketFactory(NoDelaySockets)
         .build()
 
     override fun connect(host: String, port: Int, callback: (Connection?, String?) -> Unit) {
@@ -54,6 +58,28 @@ class OkHttpTransport(private val keyStore: AndroidKeyStorePort) : TransportPort
         val authority = if (':' in host) "[$host]:$port" else "$host:$port"
         client.newWebSocket(Request.Builder().url("wss://$authority/").build(), connection)
     }
+}
+
+/**
+ * OkHttp leaves Nagle's algorithm on: each small frame waits until the previous one is ACKed, and Wi-Fi power save
+ * delays ACKs, so 120 input messages a second arrive late and in bursts. TLS wraps this socket, so it applies there too.
+ */
+private object NoDelaySockets : SocketFactory() {
+    private val base = getDefault()
+
+    private fun Socket.noDelay() = apply { tcpNoDelay = true }
+
+    override fun createSocket(): Socket = base.createSocket().noDelay()
+
+    override fun createSocket(host: String, port: Int): Socket = base.createSocket(host, port).noDelay()
+
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
+        base.createSocket(host, port, localHost, localPort).noDelay()
+
+    override fun createSocket(host: InetAddress, port: Int): Socket = base.createSocket(host, port).noDelay()
+
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
+        base.createSocket(address, port, localAddress, localPort).noDelay()
 }
 
 private class OkConnection(private var callback: ((Connection?, String?) -> Unit)?) : WebSocketListener(), Connection {

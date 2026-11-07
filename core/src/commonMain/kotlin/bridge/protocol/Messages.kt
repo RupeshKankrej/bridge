@@ -119,3 +119,45 @@ data class NotifAction(val key: String, val actionIndex: Int) : Message
 @Serializable
 @SerialName("notif.reply")
 data class NotifReply(val key: String, val replyText: String) : Message
+
+/** `input.pointer.buttons` bits: the buttons held down after this event. */
+const val BUTTON_LEFT = 1
+const val BUTTON_RIGHT = 2
+
+/** `input.key.modifiers` bits. */
+const val MOD_SHIFT = 1
+const val MOD_CONTROL = 2
+const val MOD_OPTION = 4
+const val MOD_COMMAND = 8
+
+/** One zoom step; the Mac maps it to ⌘= / ⌘− (ADR 0010). */
+@Serializable
+enum class InputGesture {
+    @SerialName("zoomIn") ZOOM_IN,
+    @SerialName("zoomOut") ZOOM_OUT,
+}
+
+/**
+ * Tablet → Mac pointer event (spec §5.5). [dx]/[dy] move the pointer in Mac points; [scrollX]/[scrollY] scroll by that
+ * many pixels in the direction the fingers moved (positive = content moves right/down). Deltas are sums of everything
+ * since the previous message (coalescing). [buttons] is the held-button state: the Mac moves first, then presses or
+ * releases whatever differs from the previous message, so a click is `buttons: 1` followed by `buttons: 0`.
+ */
+@Serializable
+@SerialName("input.pointer")
+data class InputPointer(
+    val dx: Double = 0.0,
+    val dy: Double = 0.0,
+    val buttons: Int = 0,
+    val scrollX: Double = 0.0,
+    val scrollY: Double = 0.0,
+    val gesture: InputGesture? = null,
+) : Message
+
+/**
+ * Tablet → Mac key event (spec §5.5): exactly one of [keyCode] (a [MacKey] code, pressed and released with [modifiers])
+ * or [text] (typed as-is, for IME text without ⌘/⌃/⌥).
+ */
+@Serializable
+@SerialName("input.key")
+data class InputKey(val keyCode: Int? = null, val modifiers: Int = 0, val text: String? = null) : Message

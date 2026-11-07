@@ -7,6 +7,7 @@ import bridge.port.Connection
 import bridge.port.ConnectionListener
 import bridge.port.DiscoveredPeer
 import bridge.port.DiscoveryPort
+import bridge.port.InputPort
 import bridge.port.KeyStorePort
 import bridge.port.NotificationEvents
 import bridge.port.NotificationPort
@@ -17,6 +18,10 @@ import bridge.protocol.ClipboardSet
 import bridge.protocol.Codec
 import bridge.protocol.Envelope
 import bridge.protocol.Hello
+import bridge.protocol.InputGesture
+import bridge.protocol.InputKey
+import bridge.protocol.InputPointer
+import bridge.protocol.MacKey
 import bridge.protocol.MAX_CLIPBOARD_BYTES
 import bridge.protocol.MAX_ICON_BYTES
 import bridge.protocol.Message
@@ -50,6 +55,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /** Control channel port: LocalSend's 53317 + 1 (spec §3). */
@@ -64,6 +70,9 @@ internal val MAX_BACKOFF = 30.seconds
 
 /** After a wake or network change, a live-looking session that doesn't answer a ping within this is dead. */
 internal val PROBE_TIMEOUT = 5.seconds
+
+/** Remote input is capped at 120 messages a second (spec §5.5). */
+internal val INPUT_INTERVAL = 1000.milliseconds / 120
 
 data class BridgeState(
     /** This device's certificate fingerprint. */
@@ -103,6 +112,7 @@ class Bridge internal constructor(
     private val discovery: DiscoveryPort,
     private val clipboard: ClipboardPort,
     private val notifications: NotificationPort,
+    private val input: InputPort,
     private val scope: CoroutineScope,
 ) {
     constructor(
@@ -114,7 +124,8 @@ class Bridge internal constructor(
         discovery: DiscoveryPort,
         clipboard: ClipboardPort,
         notifications: NotificationPort,
-    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, notifications, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+        input: InputPort,
+    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, notifications, input, CoroutineScope(SupervisorJob() + Dispatchers.Main))
 
     private val identity = Identity.loadOrCreate(keyStore)
     private val myId = identity.fingerprint
@@ -134,6 +145,9 @@ class Bridge internal constructor(
         var pongs = 0
         var pairingCode: String? = null
         var confirmSent = false
+
+        /** We already told the peer input is refused; set again once an event goes through. */
+        var inputRefused = false
     }
 
     private val online = mutableMapOf<String, Session>()
@@ -153,6 +167,12 @@ class Bridge internal constructor(
     private class Clip(val text: String?, val ts: Long, val origin: String)
 
     private var clip = Clip(null, now(), myId)
+
+    /** Input waiting for its slot; one message leaves every [INPUT_INTERVAL]. */
+    private val inputQueue = ArrayDeque<Message>()
+    private var tailIsMotion = false
+    private var inputPump: Job? = null
+    private var heldButtons = 0
 
     /** For Swift, which can't collect a Flow: [onChange] runs on the main thread for every state. */
     fun observe(onChange: (BridgeState) -> Unit) {
@@ -252,6 +272,63 @@ class Bridge internal constructor(
                 }
             }
             keyStore.trustedPeers().filter { it.host != null && it.fingerprint !in online }.forEach { redial(it.fingerprint) }
+        }
+    }
+
+    /**
+     * Tablet: move the pointer by [dx]/[dy] Mac points and scroll by [scrollX]/[scrollY] pixels (see [InputPointer]).
+     * Call as often as touch events arrive: deltas are summed until the next 120 Hz slot.
+     */
+    fun pointer(dx: Double, dy: Double, scrollX: Double = 0.0, scrollY: Double = 0.0) {
+        // NaN or infinity can't be encoded as JSON and would throw on send.
+        if (!dx.isFinite() || !dy.isFinite() || !scrollX.isFinite() || !scrollY.isFinite()) return
+        scope.launch {
+            val tail = inputQueue.lastOrNull()
+            if (tailIsMotion && tail is InputPointer) {
+                inputQueue[inputQueue.lastIndex] = tail.copy(dx = tail.dx + dx, dy = tail.dy + dy, scrollX = tail.scrollX + scrollX, scrollY = tail.scrollY + scrollY)
+            } else {
+                queueInput(InputPointer(dx, dy, heldButtons, scrollX, scrollY), motion = true)
+            }
+        }
+    }
+
+    /** Tablet: [held] is the set of buttons now down ([bridge.protocol.BUTTON_LEFT] …); a click is press then release. */
+    fun buttons(held: Int) {
+        scope.launch {
+            if (held == heldButtons) return@launch
+            heldButtons = held
+            queueInput(InputPointer(buttons = held))
+        }
+    }
+
+    fun zoom(gesture: InputGesture) {
+        scope.launch { queueInput(InputPointer(buttons = heldButtons, gesture = gesture)) }
+    }
+
+    /** Tablet: press and release [keyCode] (a [MacKey] code) with [modifiers]. */
+    fun key(keyCode: Int, modifiers: Int = 0) {
+        if (keyCode !in 0..MacKey.MAX) return
+        scope.launch { queueInput(InputKey(keyCode, modifiers)) }
+    }
+
+    /** Tablet: type [text] on the Mac as-is. */
+    fun type(text: String) {
+        if (text.isEmpty()) return
+        scope.launch { queueInput(InputKey(text = text)) }
+    }
+
+    /** Clicks, keys and gestures keep their order and are never merged; only motion right before the next slot is. */
+    private fun queueInput(m: Message, motion: Boolean = false) {
+        inputQueue.addLast(m)
+        tailIsMotion = motion
+        if (inputPump?.isActive == true) return
+        inputPump = scope.launch {
+            while (true) {
+                val next = inputQueue.removeFirstOrNull() ?: break
+                // Nothing is queued for an offline Mac: stale pointer moves are worse than none.
+                online.values.forEach { send(it, next) }
+                delay(INPUT_INTERVAL)
+            }
         }
     }
 
@@ -417,6 +494,23 @@ class Bridge internal constructor(
                     else -> {}
                 }
             }
+            is InputPointer, is InputKey -> when {
+                !s.paired -> send(s, ProtocolError("unauthorized", "pair first"), env.id)
+                m is InputKey && (m.keyCode == null) == (m.text == null) -> send(s, ProtocolError("invalid_message", "send keyCode or text"), env.id)
+                m is InputKey && m.keyCode != null && m.keyCode !in 0..MacKey.MAX -> send(s, ProtocolError("invalid_message", "bad keyCode"), env.id)
+                else -> onInput(s, m, env.id)
+            }
+        }
+    }
+
+    private fun onInput(s: Session, m: Message, id: String) {
+        val injected = if (m is InputPointer) input.pointer(m) else input.key(m as InputKey)
+        if (injected) {
+            s.inputRefused = false
+        } else if (!s.inputRefused) {
+            // Once per refused run, not 120 times a second; the Mac shows its own guided prompt.
+            s.inputRefused = true
+            send(s, ProtocolError("permission_missing", "allow Bridge under System Settings → Privacy & Security → Accessibility on the Mac"), id)
         }
     }
 

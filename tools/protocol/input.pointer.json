@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/input.pointer.json",
+  "title": "input.pointer payload",
+  "description": "Tablet → Mac, at most 120 per second; deltas are summed since the previous message. The Mac moves first, then presses or releases the buttons that differ from the previous message. Omitted fields are 0.",
+  "type": "object",
+  "properties": {
+    "dx": { "type": "number", "description": "pointer movement, Mac points" },
+    "dy": { "type": "number", "description": "pointer movement, Mac points, positive = down" },
+    "buttons": { "type": "integer", "minimum": 0, "description": "buttons held after this event: 1 left, 2 right" },
+    "scrollX": { "type": "number", "description": "pixels the content moves, positive = right" },
+    "scrollY": { "type": "number", "description": "pixels the content moves, positive = down" },
+    "gesture": { "enum": ["zoomIn", "zoomOut"], "description": "one zoom step (pinch)" }
+  },
+  "additionalProperties": false
+}

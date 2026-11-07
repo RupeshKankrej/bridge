@@ -96,18 +96,20 @@ class NotificationContractTest {
         assertEquals("invalid_message", replies.errors().single().code)
     }
 
-    private fun rawPeer(p: Devices, fingerprint: String): Pair<Connection, MutableList<String>> {
-        val raw = p.lan.dial(p.mac.host, CONTROL_PORT, fingerprint)!!
-        val replies = mutableListOf<String>()
-        raw.start(object : ConnectionListener {
-            override fun onText(text: String) {
-                replies += text
-            }
-
-            override fun onClosed(reason: String) {}
-        })
-        return raw to replies
-    }
-
-    private fun List<String>.errors() = mapNotNull { Codec.decode(it).getOrThrow().message as? ProtocolError }
 }
+
+/** A connection to the Mac presenting [fingerprint], driven by hand; returns it and the text frames it receives. */
+internal fun rawPeer(p: Devices, fingerprint: String): Pair<Connection, MutableList<String>> {
+    val raw = p.lan.dial(p.mac.host, CONTROL_PORT, fingerprint)!!
+    val replies = mutableListOf<String>()
+    raw.start(object : ConnectionListener {
+        override fun onText(text: String) {
+            replies += text
+        }
+
+        override fun onClosed(reason: String) {}
+    })
+    return raw to replies
+}
+
+internal fun List<String>.errors() = mapNotNull { Codec.decode(it).getOrThrow().message as? ProtocolError }

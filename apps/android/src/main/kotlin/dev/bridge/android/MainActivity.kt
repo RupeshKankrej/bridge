@@ -59,7 +59,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    HomeScreen(app, batteryExempt.value, notificationAccess.value, onScan = ::scan, onAllowBackground = ::requestBatteryExemption)
+                    var trackpad by remember { mutableStateOf(false) }
+                    if (trackpad) {
+                        TrackpadScreen(bridge) { trackpad = false }
+                    } else {
+                        HomeScreen(
+                            app, batteryExempt.value, notificationAccess.value,
+                            onScan = ::scan, onAllowBackground = ::requestBatteryExemption, onTrackpad = { trackpad = true },
+                        )
+                    }
                 }
             }
         }
@@ -93,7 +101,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(app: BridgeApplication, batteryExempt: Boolean, notificationAccess: Boolean, onScan: (host: String) -> Unit, onAllowBackground: () -> Unit) {
+private fun HomeScreen(
+    app: BridgeApplication,
+    batteryExempt: Boolean,
+    notificationAccess: Boolean,
+    onScan: (host: String) -> Unit,
+    onAllowBackground: () -> Unit,
+    onTrackpad: () -> Unit,
+) {
     val bridge = app.bridge
     val state by bridge.state.collectAsState()
     val resolver = app.contentResolver
@@ -130,7 +145,10 @@ private fun HomeScreen(app: BridgeApplication, batteryExempt: Boolean, notificat
                     OutlinedButton(onClick = { bridge.setAddress(peer.fingerprint, typed) }, enabled = typed.isNotBlank()) { Text("Connect") }
                 }
             }
-            OutlinedButton(onClick = { bridge.unpair(peer.fingerprint) }) { Text("Forget") }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button(onClick = onTrackpad, enabled = peer.online) { Text("Trackpad") }
+                OutlinedButton(onClick = { bridge.unpair(peer.fingerprint) }) { Text("Forget") }
+            }
         }
 
         val pairing = state.pairing

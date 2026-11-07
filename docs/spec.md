@@ -151,8 +151,8 @@ Binary payloads (clipboard images, thumbnails) are sent as a WebSocket binary fr
 | notif.posted | tablet → Mac | key, app, title, text, icon (binary, image/png ≤ 64 KiB), actions[] (titles of actions without a RemoteInput), replyable | 2 |
 | notif.dismissed | both | key | 2 |
 | notif.action / notif.reply | Mac → tablet | key, actionIndex (into notif.posted actions[]) or replyText | 2 |
-| input.pointer | tablet → Mac | dx, dy, buttons, scrollX, scrollY, gesture | 2 |
-| input.key | tablet → Mac | keyCode, modifiers, text | 2 |
+| input.pointer | tablet → Mac | dx, dy (Mac points), buttons (held: 1 left, 2 right), scrollX, scrollY (pixels, content direction), gesture (zoomIn / zoomOut) | 2 |
+| input.key | tablet → Mac | keyCode (macOS virtual key code) + modifiers (1 ⇧, 2 ⌃, 4 ⌥, 8 ⌘), or text | 2 |
 | media.state / media.command | both | title, artist, playing, position; play, pause, next, prev, volume | 2 |
 | battery.state | both | level, charging | 2 |
 | share.text | both | text or url | 2 |
@@ -227,6 +227,10 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
 - Tablet trackpad screen: one finger moves the pointer, tap = click, two-finger drag = scroll, two-finger tap = right-click, pinch = zoom. A keyboard view sends `input.key` including modifiers.
 - Mac injects events with `CGEvent`; requires the Accessibility permission, requested on first use with a guided prompt.
 - Rate limited to 120 events/s with coalescing of pointer deltas.
+- The sender's core sends at most one input message per 1/120 s; pointer and scroll deltas made meanwhile are summed,
+  while clicks, keys and zoom steps keep their order and are never merged. Pinch is one ⌘= / ⌘− per 1.25× of span, as
+  macOS has no public API to inject magnify gestures. A refused event (no Accessibility) is answered once with
+  `permission_missing` so the tablet can say why nothing moves (ADR 0010).
 
 ### 5.6 Media controls and battery (F7)
 
@@ -404,7 +408,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 **Phase 2 milestones**
 
 - [x] M2.1 Notifications mirrored with dismiss sync and inline reply
-- [ ] M2.2 Trackpad and keyboard from the tablet with Accessibility onboarding
+- [x] M2.2 Trackpad and keyboard from the tablet with Accessibility onboarding
 - [ ] M2.3 Media controls, battery, share-to-device
 - [ ] M2.4 AirDrop visibility toggle, receive-folder and transfer-list plumbing (UI only; wired to Tier A if Quick Share support reaches the Pad 3, otherwise to Tier B in Phase 3)
 - [ ] M2.5 Two weeks of daily use without manual reconnects
