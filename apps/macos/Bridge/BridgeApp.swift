@@ -150,7 +150,7 @@ final class BridgeModel: ObservableObject {
     init() {
         let keyStore = MacKeyStore()
         let network = MacNetwork(identity: keyStore.tlsIdentity)
-        let problems = PassthroughSubject<String, Never>()
+        let problems = PassthroughSubject<String?, Never>()
         bridge = Bridge(
             name: Host.current().localizedName ?? "Mac",
             platform: .macos,
@@ -159,7 +159,8 @@ final class BridgeModel: ObservableObject {
             transport: network,
             discovery: network,
             clipboard: MacClipboard(),
-            notifications: MacNotifications { problems.send($0) }
+            notifications: MacNotifications { problems.send($0) },
+            input: MacInput { problems.send($0) }
         )
         // After Bridge, which creates the identity on first launch.
         fileTransfer = FileTransfer(
