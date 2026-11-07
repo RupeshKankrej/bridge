@@ -5,7 +5,7 @@ package bridge.contract
 import bridge.files.FilesState
 import bridge.files.TransferStatus
 import bridge.files.safePath
-import bridge.port.Stream
+import bridge.port.ByteStream
 import bridge.port.TrustedPeer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,6 +58,21 @@ class FilesContractTest {
         assertEquals("Pad", p.mac.state.peer(p.tab.id).alias)
         assertEquals("10.0.0.2", p.mac.state.peer(p.tab.id).host)
         assertEquals("Mac", p.tab.state.peer(p.mac.id).alias)
+    }
+
+    @Test
+    fun uppercaseFingerprintFromLocalSendStillMatchesItsCertificate() = runTest {
+        val p = nodes(paired = false)
+        // Real LocalSend 2.2 on Android announces its certificate hash in uppercase hex.
+        val announce = """{"alias":"Phone","version":"2.2","deviceType":"mobile","fingerprint":"${p.tab.id.uppercase()}","port":53317,"protocol":"https","announce":true}"""
+        p.net.multicast("10.0.0.2", announce.encodeToByteArray())
+        runCurrent()
+        assertEquals(listOf("Phone"), p.mac.state.nearby.map { it.alias }, "same device, one entry")
+        p.mac.files.send(p.mac.state.peer(p.tab.id), listOf(BytesFile("x", ByteArray(3))))
+        runCurrent()
+        p.tab.files.respond(p.tab.state.offer!!.id, accept = true)
+        settle()
+        assertEquals(TransferStatus.DONE, p.mac.state.last().status, p.mac.state.last().error)
     }
 
     @Test
@@ -123,6 +138,8 @@ class FilesContractTest {
         settle()
         assertEquals(TransferStatus.FAILED, p.tab.state.last().status)
         assertEquals(TransferStatus.FAILED, p.mac.state.last().status)
+        assertNotNull(p.tab.state.last().error, "the sender says why")
+        assertTrue(p.mac.state.last().error!!.contains("connection to Pad lost"))
         assertTrue(p.mac.store.files.isEmpty())
         assertEquals(0, p.mac.store.partials)
     }
@@ -138,6 +155,66 @@ class FilesContractTest {
         assertEquals(TransferStatus.CANCELLED, p.mac.state.last().status)
         assertEquals(TransferStatus.FAILED, p.tab.state.last().status)
         assertTrue(p.mac.store.files.isEmpty())
+        assertEquals(0, p.mac.store.partials)
+    }
+
+    @Test
+    fun unpairedDeviceWithACertificateIsRefusedOnThePairedPort() = runTest {
+        val p = nodes(paired = false)
+        val stranger = RawClient(p.net, p.mac, port = 53319, fingerprint = "f".repeat(64))
+        stranger.send("POST /api/localsend/v2/prepare-upload HTTP/1.1\r\nContent-Length: 0\r\n\r\n")
+        runCurrent()
+        assertTrue(stranger.received().startsWith("HTTP/1.1 403"))
+        assertNull(p.mac.state.offer)
+    }
+
+    @Test
+    fun pairedPeerOnThePlainPortIsJustAnotherLocalSendClient() = runTest {
+        val p = nodes()
+        // The paired tablet's certificate isn't asked for on 53317, so it gets the prompt like anyone else.
+        val tab = RawClient(p.net, p.mac, fingerprint = p.tab.id)
+        val prepare = """{"info":{"alias":"Pad"},"files":{"f":{"id":"f","fileName":"a","size":1,"fileType":"x"}}}"""
+        tab.send("POST /api/localsend/v2/prepare-upload HTTP/1.1\r\nContent-Length: ${prepare.length}\r\n\r\n$prepare")
+        runCurrent()
+        assertNotNull(p.mac.state.offer)
+    }
+
+    @Test
+    fun receiverCancelStopsTheSenderAtTheNextFile() = runTest {
+        val p = nodes(tabletPresentsCertificate = false, paired = false)
+        var cancelled = false
+        val first = BytesFile("a", ByteArray(600_000)) {
+            if (!cancelled) {
+                cancelled = true
+                p.mac.files.cancel(p.mac.state.last().id) // the user taps cancel on the receiving side
+            }
+        }
+        p.tab.files.send(p.tab.state.peer(p.mac.id), listOf(first, BytesFile("b", ByteArray(10)), BytesFile("c", ByteArray(10))))
+        runCurrent()
+        p.mac.files.respond(p.mac.state.offer!!.id, accept = true)
+        settle()
+        val sent = p.tab.state.last()
+        assertEquals(TransferStatus.CANCELLED, sent.status, "$sent / receiver ${p.mac.state.last()}")
+        assertEquals("Cancelled by Mac", sent.error)
+        assertEquals(TransferStatus.CANCELLED, sent.files[2].status, "not attempted once the receiver refused")
+        assertEquals(TransferStatus.CANCELLED, p.mac.state.last().status)
+        assertTrue(p.mac.store.files.isEmpty())
+    }
+
+    @Test
+    fun senderCancelEndsTheReceiversSession() = runTest {
+        val p = nodes()
+        var cancelled = false
+        val big = BytesFile("a", ByteArray(600_000)) {
+            if (!cancelled) {
+                cancelled = true
+                p.tab.files.cancel(p.tab.state.last().id) // the user taps cancel on the sending side
+            }
+        }
+        p.tab.files.send(p.tab.state.peer(p.mac.id), listOf(big))
+        settle()
+        assertEquals(TransferStatus.CANCELLED, p.tab.state.last().status)
+        assertEquals(TransferStatus.CANCELLED, p.mac.state.last().status, "the sender's /cancel reached the receiver")
         assertEquals(0, p.mac.store.partials)
     }
 
@@ -188,13 +265,13 @@ class FilesContractTest {
     }
 }
 
-/** Speaks raw HTTP to [server] without a client certificate, like the LocalSend app. */
-private class RawClient(net: StreamNet, server: FilesNode) {
-    private lateinit var stream: Stream
+/** Speaks raw HTTP to [server]; by default on 53317 without a client certificate, like the LocalSend app. */
+private class RawClient(net: StreamNet, server: FilesNode, port: Int = 53317, fingerprint: String? = null) {
+    private lateinit var stream: ByteStream
     private val inbox = StringBuilder()
 
     init {
-        net.connect("10.0.0.9", null, server.host, 53317) { s, _ -> stream = s!! }
+        net.connect("10.0.0.9", fingerprint, server.host, port) { s, _ -> stream = s!! }
         pump()
     }
 

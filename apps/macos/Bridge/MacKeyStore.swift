@@ -20,7 +20,7 @@ final class MacKeyStore: NSObject, KeyStorePort {
     ])
 
     func loadCertificate() -> KotlinByteArray? {
-        readItem(service: certService).map { KotlinByteArray(data: $0) }
+        readItem(service: certService).map { $0.kotlin }
     }
 
     func generateKey() throws -> KotlinByteArray {
@@ -34,14 +34,14 @@ final class MacKeyStore: NSObject, KeyStorePort {
         guard let publicKey = SecKeyCopyPublicKey(key),
               let point = SecKeyCopyExternalRepresentation(publicKey, &error) as Data?
         else { throw cfError(error) }
-        return KotlinByteArray(data: Self.p256SpkiHeader + point)
+        return (Self.p256SpkiHeader + point).kotlin
     }
 
     func sign(data: KotlinByteArray) throws -> KotlinByteArray {
         var error: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(try privateKey(), .ecdsaSignatureMessageX962SHA256, data.data as CFData, &error) as Data?
         else { throw cfError(error) }
-        return KotlinByteArray(data: signature)
+        return signature.kotlin
     }
 
     func saveCertificate(certificate: KotlinByteArray) throws {

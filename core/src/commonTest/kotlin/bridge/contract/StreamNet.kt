@@ -7,7 +7,7 @@ import bridge.port.FileSource
 import bridge.port.FileStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.Stream
+import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.protocol.Platform
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,7 +22,9 @@ import kotlin.time.Duration.Companion.seconds
  * that many upload bytes have gone through, every open stream breaks and connects fail for [dropFor].
  */
 class StreamNet(private val scope: CoroutineScope) {
-    private val servers = mutableMapOf<Pair<String, Int>, Pair<String, (Stream) -> Unit>>()
+    private class Server(val fingerprint: String, val requireCertificate: Boolean, val accept: (ByteStream) -> Unit)
+
+    private val servers = mutableMapOf<Pair<String, Int>, Server>()
     private val members = mutableListOf<Pair<String, (ByteArray, String) -> Unit>>()
     private val open = mutableListOf<Pipe>()
     var offline = false
@@ -30,20 +32,22 @@ class StreamNet(private val scope: CoroutineScope) {
     var dropFor: Duration = 10.seconds
     private var uploaded = 0L
 
-    fun listen(host: String, port: Int, fingerprint: String, onStream: (Stream) -> Unit) {
-        servers[host to port] = fingerprint to onStream
+    fun listen(host: String, port: Int, fingerprint: String, requireCertificate: Boolean, onStream: (ByteStream) -> Unit) {
+        servers[host to port] = Server(fingerprint, requireCertificate, onStream)
     }
 
-    fun connect(fromHost: String, clientFingerprint: String?, host: String, port: Int, callback: (Stream?, String?) -> Unit) {
-        val (serverFingerprint, accept) = servers[host to port] ?: return callback(null, "refused")
+    fun connect(fromHost: String, clientFingerprint: String?, host: String, port: Int, callback: (ByteStream?, String?) -> Unit) {
+        val s = servers[host to port] ?: return callback(null, "refused")
         if (offline) return callback(null, "network unreachable")
-        val client = Pipe(serverFingerprint, host, this, upload = true)
-        val server = Pipe(clientFingerprint, fromHost, this, upload = false)
+        if (s.requireCertificate && clientFingerprint == null) return callback(null, "handshake failure: certificate required")
+        val client = Pipe(s.fingerprint, host, this, upload = true)
+        // Like Network.framework: a server that doesn't require a certificate never asks, so never sees one.
+        val server = Pipe(clientFingerprint.takeIf { s.requireCertificate }, fromHost, this, upload = false)
         client.other = server
         server.other = client
         open += client
         open += server
-        accept(server)
+        s.accept(server)
         callback(client, null)
     }
 
@@ -72,7 +76,7 @@ class StreamNet(private val scope: CoroutineScope) {
     internal fun forget(p: Pipe) = open.remove(p)
 }
 
-class Pipe(override val peerFingerprint: String?, override val remoteHost: String, private val net: StreamNet, val upload: Boolean) : Stream {
+class Pipe(override val peerFingerprint: String?, override val remoteHost: String, private val net: StreamNet, val upload: Boolean) : ByteStream {
     lateinit var other: Pipe
     private val inbox = ArrayDeque<ByteArray>()
     private var eof = false
@@ -147,13 +151,22 @@ class MemoryStore : FileStorePort {
     }
 }
 
-class BytesFile(override val path: String, val bytes: ByteArray, override val mime: String = "application/octet-stream") : OutgoingFile {
+/** [onRead] runs on every read: a hook for acting mid-upload, e.g. cancelling. */
+class BytesFile(
+    override val path: String,
+    val bytes: ByteArray,
+    override val mime: String = "application/octet-stream",
+    private val onRead: () -> Unit = {},
+) : OutgoingFile {
     override val size get() = bytes.size.toLong()
 
     override fun open(offset: Long): FileSource = object : FileSource {
         var at = offset.toInt()
 
-        override fun read(max: Int) = bytes.copyOfRange(at, minOf(bytes.size, at + max)).also { at += it.size }
+        override fun read(max: Int): ByteArray {
+            onRead()
+            return bytes.copyOfRange(at, minOf(bytes.size, at + max)).also { at += it.size }
+        }
 
         override fun close() = Unit
     }
@@ -173,9 +186,10 @@ class FilesNode(
     private var myId = ""
 
     private val streams = object : StreamPort {
-        override fun listen(port: Int, onStream: (Stream) -> Unit) = net.listen(host, port, myId, onStream)
+        override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (ByteStream) -> Unit) =
+            net.listen(host, port, myId, requireClientCertificate, onStream)
 
-        override fun connect(host: String, port: Int, callback: (Stream?, String?) -> Unit) =
+        override fun dial(host: String, port: Int, callback: (ByteStream?, String?) -> Unit) =
             net.connect(this@FilesNode.host, myId.takeIf { presentsCertificate }, host, port, callback)
     }
 

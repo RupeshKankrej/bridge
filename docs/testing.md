@@ -2,7 +2,7 @@
 
 ## Automated
 - `./gradlew :core:allTests` — codec round-trips, session state machine, pairing, LocalSend parsing, contract tests over localhost. Run before every commit.
-- `./gradlew :core:localSendInteropTest` — runs `core` with JDK TLS adapters as "Bridge interop" on port 53319 and exchanges
+- `./gradlew :core:localSendInteropTest` — runs `core` with JDK TLS adapters as "Bridge interop" on port 53321 (paired port 53323) and exchanges
   files with the official LocalSend app on any device on the same Wi-Fi: send it any file from LocalSend, then accept
   `interop.bin` (20 MB) in LocalSend. Waits up to 3 minutes for each step. Received files land in `core/build/interop/`.
   Not part of `allTests`. If the Mac running it also runs LocalSend, both share UDP 53317 for multicast; use another device if
@@ -41,6 +41,22 @@ Rebuild both apps as in the M1.2 gate; the devices stay paired.
 - [ ] Copy a password from a password manager on the Mac (1Password, Passwords app): not sent — **fails**, known issue in STATUS.md
 - [x] Copy > 1 MB of text on the Mac: not sent; the menu shows "over 1 MB"
 - [x] Turn tablet Wi-Fi off, copy on the Mac, turn Wi-Fi on: after reconnect the tablet has the new text
+
+## M1.4b checks (Mac, before the M1.4 gate)
+Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`) and the Mac app. After a rebuild macOS may ask twice for
+Keychain access (certificate, then private key): Always Allow. Quit LocalSend.app on the Mac first; it holds port 53317.
+- [x] `lsof` shows Bridge listening on TCP 53317, 53318, 53319 and UDP 53317
+- [x] `curl -sk https://127.0.0.1:53317/api/localsend/v2/info` returns LocalSend fields; 53319 refuses curl (no certificate)
+- [x] A curl offer opens the menu with Accept / Decline; after Accept a 1 GB upload lands in `~/Downloads/Bridge` (~340 MB/s on localhost)
+- [x] Official LocalSend (Android, v2.2) on the Pad 3 → Mac: the Accept / Decline card appears top-right, file lands in `~/Downloads/Bridge`
+- [x] Drag a file onto the menu-bar icon → pick the tablet's LocalSend → accepted there and received
+- [x] Drag a folder onto the menu-bar icon: structure kept on the receiver
+- [x] Finder → right-click → Services → "Send with Bridge" (first time: run the app once, then `/System/Library/CoreServices/pbs -update` or log out/in)
+- [x] Cancel from either side stops the transfer on both (Mac shows "Cancelled by <device>" when the tablet cancels)
+
+Troubleshooting seen on the Pad 3: a failed transfer shows its reason in red in the list. "answered HTTP 500" from
+LocalSend means the receiving LocalSend can't write to its save folder: open LocalSend → Settings → Receive and grant
+storage access.
 
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About

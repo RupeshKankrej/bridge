@@ -1,6 +1,6 @@
 package bridge.files
 
-import bridge.port.Stream
+import bridge.port.ByteStream
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -15,13 +15,13 @@ internal const val CHUNK = 256 * 1024
 private const val MAX_LINE = 8 * 1024
 private const val MAX_HEADERS = 100
 
-internal suspend fun Stream.readSome(max: Int): ByteArray = io { c -> read(max) { data, error -> c(data, error) } }
+internal suspend fun ByteStream.readSome(max: Int): ByteArray = io { c -> read(max) { data, error -> c(data, error) } }
 
-internal suspend fun Stream.writeAll(data: ByteArray) {
+internal suspend fun ByteStream.writeAll(data: ByteArray) {
     io<Unit> { c -> write(data) { error -> c(if (error == null) Unit else null, error) } }
 }
 
-private suspend fun <T : Any> Stream.io(start: ((T?, String?) -> Unit) -> Unit): T {
+private suspend fun <T : Any> ByteStream.io(start: ((T?, String?) -> Unit) -> Unit): T {
     val result = withTimeoutOrNull(IO_TIMEOUT) {
         suspendCancellableCoroutine<Result<T>> { c ->
             start { value, error -> if (c.isActive) c.resume(value?.let { Result.success(it) } ?: Result.failure(StreamException(error ?: "failed"))) }
@@ -49,7 +49,7 @@ internal class HttpHead(val start: List<String>, val headers: Map<String, String
  * Just enough HTTP/1.1 for LocalSend: request and status lines, headers, Content-Length and chunked
  * bodies, keep-alive on the server side. No pipelining, no 100-continue.
  */
-internal class HttpStream(val stream: Stream) {
+internal class HttpStream(val stream: ByteStream) {
     private var buf = ByteArray(0)
     private var pos = 0
 

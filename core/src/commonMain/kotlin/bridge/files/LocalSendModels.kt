@@ -6,10 +6,13 @@ import kotlinx.serialization.json.Json
 /** LocalSend v2.1 JSON bodies (https://github.com/localsend/protocol). Field names are the wire names. */
 internal const val LOCALSEND_VERSION = "2.1"
 internal const val LOCALSEND_PORT = 53317
+
+/** Bridge-only (ADR 0007): the same API with a required client certificate, for paired peers. */
+internal const val PAIRED_FILES_PORT = 53319
 internal const val MULTICAST_GROUP = "224.0.0.167"
 internal const val API = "/api/localsend/v2"
 
-/** Bridge-only (ADR 0007): sent on prepare-upload responses to trusted Bridge clients only. */
+/** Bridge-only (ADR 0007): sent on prepare-upload responses on the paired port only. */
 internal const val RESUME_HEADER = "X-Bridge-Resume"
 
 /** Bridge-only (ADR 0007): HEAD /upload reports it; POST /upload with it appends from there. */

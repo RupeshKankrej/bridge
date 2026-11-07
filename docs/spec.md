@@ -99,7 +99,7 @@ The macOS and Android apps differ only in their UI shell and platform adapters; 
 | --- | --- | --- | --- |
 | Discovery | mDNS/DNS-SD (Bonjour on Mac, NsdManager on Android) | Finding peers, announcing capabilities | Standard, zero-config, same mechanism LocalSend uses |
 | Control | WebSocket over TLS, port 53317+1 | Clipboard, notifications, input events, media, battery, signalling | Low-latency, ordered, bidirectional, small messages |
-| Files | HTTPS REST, port 53317 | File/folder transfer, LocalSend-compatible | Interop with every LocalSend client; resumable; separate from control so a 2 GB file never blocks a clipboard update |
+| Files | HTTPS REST, port 53317 (LocalSend) and 53319 (paired Bridge peers, client certificate required) | File/folder transfer, LocalSend-compatible | Interop with every LocalSend client; resumable; separate from control so a 2 GB file never blocks a clipboard update |
 | Video | UDP (RTP-style) or WebRTC data channel | Screen mirroring frames | Needs lowest latency; tolerates dropped frames; unordered |
 
 **Security model**
@@ -172,9 +172,9 @@ Bridge implements the LocalSend v2.1 HTTP protocol unchanged, so any LocalSend a
 | /api/localsend/v2/upload | POST | One file per request, `?sessionId=&fileId=&token=`, raw body |
 | /api/localsend/v2/cancel | POST | Abort a session |
 
-The server is HTTPS (TLS 1.3) only; LocalSend devices in HTTP mode (encryption off) are not supported. It asks every client for a TLS certificate but doesn't require one: LocalSend clients send none, Bridge clients present their identity certificate, and a client whose certificate fingerprint is in the trusted list is a paired peer (the `fingerprint` body field is ignored, as LocalSend ignores it over HTTPS). Discovery is LocalSend's: a multicast announce, answered with `POST /register` or a multicast reply.
+The server is HTTPS (TLS 1.3) only; LocalSend devices in HTTP mode (encryption off) are not supported. Port 53317 serves everyone and never asks for a client certificate, so every offer there gets the Accept / Decline prompt; the `fingerprint` body field is ignored, as LocalSend ignores it over HTTPS. Port 53319 serves the same API but requires a client certificate and refuses (403) any certificate not in the trusted list; a Bridge device sends to a paired peer there, presenting its identity certificate. Two ports because Network.framework on macOS can't ask for an optional client certificate (ADR 0007). Discovery is LocalSend's: a multicast announce, answered with `POST /register` or a multicast reply.
 
-Bridge extensions, only towards a paired peer recognised by its client certificate (ADR 0007): the `prepare-upload` response carries `X-Bridge-Resume: 1`, after which `HEAD /upload?sessionId=&fileId=&token=` returns the bytes received so far in `Upload-Offset`, and `POST /upload` with an `Upload-Offset` header appends from there. Folder structure travels in the `fileName` path, as in LocalSend; the receiver strips `..`, empty segments and control characters. Progress events on the control channel are not built yet. Default port 53317 so existing LocalSend clients find Bridge without configuration.
+Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response carries `X-Bridge-Resume: 1`, after which `HEAD /upload?sessionId=&fileId=&token=` returns the bytes received so far in `Upload-Offset`, and `POST /upload` with an `Upload-Offset` header appends from there. Folder structure travels in the `fileName` path, as in LocalSend; the receiver strips `..`, empty segments and control characters. Progress events on the control channel are not built yet. Default port 53317 so existing LocalSend clients find Bridge without configuration.
 
 ## 5. Feature specifications
 
@@ -206,7 +206,7 @@ Bridge extensions, only towards a paired peer recognised by its client certifica
 
 ### 5.3 File sharing, LocalSend-compatible (F3)
 
-- Send from Mac: drag files onto the menu-bar icon, a Finder Services menu item "Send to <tablet>", or a Share-menu extension.
+- Send from Mac: drag files onto the menu-bar icon, the Finder Services item "Send with Bridge" (Services titles are fixed in Info.plist, so it can't name the device; it sends straight to the paired device when exactly one is nearby, otherwise the menu asks), or "Send files…" in the menu. A Share-menu extension is not built yet.
 - Send from tablet: share-sheet target, or in-app file picker (SAF) supporting multiple files and folders.
 - Receive: paired peers auto-accept into a configurable folder (`~/Downloads/Bridge` on Mac, `Download/Bridge` on Android). Unpaired LocalSend clients trigger an accept/decline prompt listing file names and sizes.
 - Progress UI on both sides: per-file and total bytes, speed, cancel. Transfers survive a brief Wi-Fi drop via `Upload-Offset` resume (paired Bridge peers only; about a minute of retries).

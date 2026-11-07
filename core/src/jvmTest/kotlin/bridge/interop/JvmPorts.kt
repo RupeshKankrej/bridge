@@ -7,7 +7,7 @@ import bridge.port.FileStorePort
 import bridge.port.KeyStorePort
 import bridge.port.MulticastPort
 import bridge.port.OutgoingFile
-import bridge.port.Stream
+import bridge.port.ByteStream
 import bridge.port.StreamPort
 import bridge.port.TrustedPeer
 import java.io.File
@@ -71,14 +71,14 @@ class JvmKeyStore : KeyStorePort {
 private val pool = Executors.newCachedThreadPool { r -> Thread(r).apply { isDaemon = true } }
 
 class JvmStreams(private val ssl: SSLContext) : StreamPort {
-    override fun listen(port: Int, onStream: (Stream) -> Unit) {
+    override fun listen(port: Int, requireClientCertificate: Boolean, onStream: (ByteStream) -> Unit) {
         val server = ssl.serverSocketFactory.createServerSocket(port) as SSLServerSocket
         server.enabledProtocols = arrayOf("TLSv1.3")
-        server.wantClientAuth = true
+        server.needClientAuth = requireClientCertificate
         thread(isDaemon = true) { while (true) onStream(SocketStream(server.accept() as SSLSocket)) }
     }
 
-    override fun connect(host: String, port: Int, callback: (Stream?, String?) -> Unit) {
+    override fun dial(host: String, port: Int, callback: (ByteStream?, String?) -> Unit) {
         pool.execute {
             val s = runCatching { (ssl.socketFactory.createSocket() as SSLSocket).apply { connect(InetSocketAddress(host, port), 10_000); enabledProtocols = arrayOf("TLSv1.3") } }
             s.fold({ callback(SocketStream(it), null) }, { callback(null, it.message) })
@@ -86,7 +86,7 @@ class JvmStreams(private val ssl: SSLContext) : StreamPort {
     }
 }
 
-private class SocketStream(private val socket: SSLSocket) : Stream {
+private class SocketStream(private val socket: SSLSocket) : ByteStream {
     override val peerFingerprint: String? by lazy {
         runCatching { fingerprint(socket.session.peerCertificates.first().encoded) }.getOrNull()
     }

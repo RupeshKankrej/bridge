@@ -184,7 +184,7 @@ final class MacConnection: NSObject, Connection {
         listener?.onClosed(reason: reason)
     }
 
-    private static func peerFingerprint(_ connection: NWConnection) -> String? {
+    static func peerFingerprint(_ connection: NWConnection) -> String? {
         guard let tls = connection.metadata(definition: NWProtocolTLS.definition) as? NWProtocolTLS.Metadata else { return nil }
         var leaf: Data?
         // The chain starts with the leaf; peers send only their self-signed certificate anyway.
