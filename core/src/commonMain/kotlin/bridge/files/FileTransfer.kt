@@ -220,10 +220,12 @@ class FileTransfer internal constructor(
     private fun announce() = multicast.send(localSendJson.encodeToString(DeviceInfo.serializer(), info(announce = true)).encodeToByteArray())
 
     private fun addPeer(host: String, dto: DeviceInfo): LocalSendPeer? {
-        if (dto.fingerprint == myId || dto.fingerprint.isEmpty()) return null
+        // LocalSend sends the certificate hash in uppercase hex; ours and the TLS layer's are lowercase.
+        val fingerprint = dto.fingerprint.lowercase()
+        if (fingerprint == myId || fingerprint.isEmpty()) return null
         // shortcut: HTTP-mode LocalSend devices (encryption off) are left out because StreamPort is TLS only; add a plain-TCP port if users ask.
         if (dto.protocol == "http") return null
-        val peer = LocalSendPeer(dto.fingerprint, dto.alias, dto.deviceType, host, dto.port ?: LOCALSEND_PORT)
+        val peer = LocalSendPeer(fingerprint, dto.alias, dto.deviceType, host, dto.port ?: LOCALSEND_PORT)
         // shortcut: peers never expire; the list is only as fresh as the last announce.
         _state.update { s -> s.copy(nearby = s.nearby.filter { it.fingerprint != peer.fingerprint } + peer) }
         return peer

@@ -61,6 +61,21 @@ class FilesContractTest {
     }
 
     @Test
+    fun uppercaseFingerprintFromLocalSendStillMatchesItsCertificate() = runTest {
+        val p = nodes(paired = false)
+        // Real LocalSend 2.2 on Android announces its certificate hash in uppercase hex.
+        val announce = """{"alias":"Phone","version":"2.2","deviceType":"mobile","fingerprint":"${p.tab.id.uppercase()}","port":53317,"protocol":"https","announce":true}"""
+        p.net.multicast("10.0.0.2", announce.encodeToByteArray())
+        runCurrent()
+        assertEquals(listOf("Phone"), p.mac.state.nearby.map { it.alias }, "same device, one entry")
+        p.mac.files.send(p.mac.state.peer(p.tab.id), listOf(BytesFile("x", ByteArray(3))))
+        runCurrent()
+        p.tab.files.respond(p.tab.state.offer!!.id, accept = true)
+        settle()
+        assertEquals(TransferStatus.DONE, p.mac.state.last().status, p.mac.state.last().error)
+    }
+
+    @Test
     fun pairedPeerAutoAcceptsFilesAndFolders() = runTest {
         val p = nodes()
         val a = Random.nextBytes(700_000)
