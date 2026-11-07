@@ -165,7 +165,7 @@ final class MacInput: NSObject, InputPort {
         if allowed {
             onProblem(nil)
         } else {
-            onProblem("Trackpad from the tablet needs Accessibility: turn on Bridge in System Settings → Privacy & Security → Accessibility")
+            onProblem("Trackpad and media keys from the tablet need Accessibility: turn on Bridge in System Settings → Privacy & Security → Accessibility")
             if !guided {
                 guided = true
                 // Async: core called us mid-dispatch, and a modal alert shouldn't run inside that.

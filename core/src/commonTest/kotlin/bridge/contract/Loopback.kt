@@ -236,13 +236,14 @@ class FakeMedia : MediaPort {
     var watcher: ((MediaState) -> Unit)? = null
     val commands = mutableListOf<MediaCommand>()
 
+    /** false = Accessibility missing. */
+    var allowed = true
+
     override fun watch(onState: ((MediaState) -> Unit)?) {
         watcher = onState
     }
 
-    override fun command(command: MediaCommand) {
-        commands += command
-    }
+    override fun command(command: MediaCommand) = allowed.also { if (it) commands += command }
 
     fun report(state: MediaState) = watcher!!(state)
 }

@@ -43,7 +43,11 @@
   link share target, links/text from the Mac as notifications; three switches, off by default.
 
 ## Known issues
-- M2.3 media controls don't work: the tablet's card shows, but ⏯ ⏭ ⏮ and the volume slider have no effect on the Mac
+- M2.3 media controls — **root cause found 2026-11-07 (M2.5)**: the Mac build is ad-hoc signed, so every rebuild loses its
+  Accessibility grant, and `MacMedia` dropped the refusal silently. Fixed: a refused media command now answers
+  `permission_missing` and the tablet shows the cause. Remaining: re-grant Accessibility (remove Bridge with −, add it again)
+  and re-run the M2.3 media checks. Signing with the Apple Development identity would stop grants resetting on every build.
+  Original note: M2.3 media controls don't work: the tablet's card shows, but ⏯ ⏭ ⏮ and the volume slider have no effect on the Mac
   (2026-11-07, YouTube in the browser). Not investigated; accepted as is by agreement. Suspects, in order: the Mac
   build's Accessibility grant went stale after re-signing (the tablet would show a `permission_missing` message), the
   posted system-defined events not reaching the Now Playing app on macOS 26, and the volume AppleScript failing under the

@@ -645,9 +645,9 @@ class Bridge internal constructor(
                 MediaAction.VOLUME -> if (m.volume == null || m.volume !in 0..100) {
                     send(s, ProtocolError("invalid_message", "volume must be 0–100"), id)
                 } else {
-                    media.command(m)
+                    runMedia(s, m, id)
                 }
-                else -> media.command(m)
+                else -> runMedia(s, m, id)
             }
             is BatteryState -> if (m.level !in 0..100) {
                 send(s, ProtocolError("invalid_message", "level must be 0–100"), id)
@@ -663,6 +663,13 @@ class Bridge internal constructor(
                 !share.open(m) -> send(s, ProtocolError("share_off", "receiving links and text is turned off in Bridge there"), id)
             }
             else -> {}
+        }
+    }
+
+    /** One tap, one answer: unlike input there's no flood to throttle, so every refused command says why. */
+    private fun runMedia(s: Session, m: MediaCommand, id: String) {
+        if (!media.command(m)) {
+            send(s, ProtocolError("permission_missing", "media keys need Bridge allowed under System Settings → Privacy & Security → Accessibility on the Mac"), id)
         }
     }
 
