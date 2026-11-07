@@ -59,7 +59,8 @@ struct FilesSection: View {
     }
 }
 
-private struct OfferView: View {
+/// Shown in the popover and in the floating offer card.
+struct OfferView: View {
     let offer: Offer
     @ObservedObject var model: BridgeModel
 
@@ -76,9 +77,14 @@ private struct OfferView: View {
             }
             if offer.files.count > 8 { Text("and \(offer.files.count - 8) more").font(.caption).foregroundStyle(.secondary) }
             HStack {
-                Button("Decline") { model.respond(offer, accept: false) }
-                Button("Accept") { model.respond(offer, accept: true) }.keyboardShortcut(.defaultAction)
+                Button { model.respond(offerId: offer.id, accept: false) } label: { Text("Decline").frame(maxWidth: .infinity) }
+                    .tint(.red)
+                Button { model.respond(offerId: offer.id, accept: true) } label: { Text("Accept").frame(maxWidth: .infinity) }
+                    .tint(.green)
+                    .keyboardShortcut(.defaultAction)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
     }
 }
@@ -104,6 +110,9 @@ private struct TransferRow: View {
                 }
             }
             if active { ProgressView(value: Double(done), total: Double(max(total, 1))) }
+            if let error = transfer.error, !active {
+                Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            }
             if transfer.files.count == 1 {
                 fileRow(transfer.files[0])
             } else {

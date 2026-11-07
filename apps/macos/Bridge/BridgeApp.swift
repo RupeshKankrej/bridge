@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
 
         model.$state.sink { [weak self] _ in self?.updateIcon() }.store(in: &subscriptions)
         model.onAttention = { [weak self] in self?.showPopover() }
+        model.onOffer = { [weak self] offer in self?.notify(offer) }
 
         // Finder → Services → "Send with Bridge" (NSServices in Info.plist).
         services = ServicesProvider(model: model)
@@ -60,6 +61,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
+    // MARK: Incoming offers
+
+    private var offerPanel: NSPanel?
+
+    /// A floating card in the top-right corner with Accept / Decline. Not a system notification: macOS
+    /// folds notification actions into an "Options" menu and doesn't allow coloured buttons.
+    private func notify(_ offer: Offer?) {
+        offerPanel?.close()
+        offerPanel = nil
+        guard let offer, let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
+        let card = NSHostingView(rootView: OfferView(offer: offer, model: model)
+            .padding(16)
+            .frame(width: 340)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)))
+        let panel = OfferPanel(contentRect: NSRect(origin: .zero, size: card.fittingSize),
+                               styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.contentView = card
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .floating
+        // Visible on every Space and over full-screen apps, without taking focus from them.
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        let area = screen.visibleFrame
+        panel.setFrameTopLeftPoint(NSPoint(x: area.maxX - panel.frame.width - 12, y: area.maxY - 12))
+        panel.orderFrontRegardless()
+        offerPanel = panel
+        NSSound(named: "Glass")?.play()
+    }
+
     // MARK: Drop files on the icon
 
     private func fileURLs(_ info: NSDraggingInfo) -> [URL] {
@@ -73,6 +104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         model.send(urls)
         return !urls.isEmpty
     }
+}
+
+/// Borderless panels can't become key by default; this one must, so its buttons take the first click.
+private final class OfferPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }
 
 /// Target of the Finder Services item. Its title is fixed in Info.plist, so it can't name the device;
@@ -96,8 +132,10 @@ final class BridgeModel: ObservableObject {
     @Published private(set) var problem: String?
     /// Files dropped or sent via Services, waiting for the user to pick a device.
     @Published private(set) var pendingSend: [MacOutgoingFile] = []
-    /// Opens the popover: an incoming offer or a send needs the user.
+    /// Opens the popover: a send needs a device picked.
     var onAttention: () -> Void = {}
+    /// Called when the pending offer changes (nil once answered or expired).
+    var onOffer: (Offer?) -> Void = { _ in }
     private let bridge: Bridge
     private let fileTransfer: FileTransfer
     private let activity: NSObjectProtocol
@@ -138,9 +176,9 @@ final class BridgeModel: ObservableObject {
         fileTransfer.observe { [weak self] files in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let newOffer = files.offer != nil && files.offer?.id != self.files?.offer?.id
+                let changed = files.offer?.id != self.files?.offer?.id
                 self.files = files
-                if newOffer { self.onAttention() }
+                if changed { self.onOffer(files.offer) }
             }
         }
         fileTransfer.start()
@@ -169,7 +207,7 @@ final class BridgeModel: ObservableObject {
 
     func cancelPendingSend() { pendingSend = [] }
     func refreshNearby() { fileTransfer.refresh() }
-    func respond(_ offer: Offer, accept: Bool) { fileTransfer.respond(offerId: offer.id, accept: accept) }
+    func respond(offerId: String, accept: Bool) { fileTransfer.respond(offerId: offerId, accept: accept) }
     func cancel(_ transfer: Transfer) { fileTransfer.cancel(transferId: transfer.id) }
 
     func openPairing() {
