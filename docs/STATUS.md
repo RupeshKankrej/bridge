@@ -15,4 +15,6 @@
 ## Log
 - 2026-11-06 — Spec v1.0 and repo skeleton created.
 - 2026-11-07 — M1.1 done: Gradle 9.8.1 + version catalog, KMP `core` module, protocol codec, `pong.json`/`error.json` schemas.
+- 2026-11-07 — M1.3 implemented: `clipboard.set`/`clipboard.request` with last-writer-wins and an origin tag (ADR 0006),
+  Mac `NSPasteboard` poller, Android clipboard listener + "Send clipboard" tile and notification action. Device gate pending.
 - 2026-11-07 — M1.2 done: identity switched from Ed25519 to P-256 and `TransportPort` added (ADR 0005); device gate passed.
