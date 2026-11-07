@@ -2,7 +2,11 @@
 
 ## Automated
 - `./gradlew :core:allTests` — codec round-trips, session state machine, pairing, LocalSend parsing, contract tests over localhost. Run before every commit.
-- `./gradlew :core:localSendInteropTest` — exchanges files with the official LocalSend build in both directions. Needs LocalSend CLI on PATH.
+- `./gradlew :core:localSendInteropTest` — runs `core` with JDK TLS adapters as "Bridge interop" on port 53319 and exchanges
+  files with the official LocalSend app on any device on the same Wi-Fi: send it any file from LocalSend, then accept
+  `interop.bin` (20 MB) in LocalSend. Waits up to 3 minutes for each step. Received files land in `core/build/interop/`.
+  Not part of `allTests`. If the Mac running it also runs LocalSend, both share UDP 53317 for multicast; use another device if
+  "Bridge interop" never appears in LocalSend.
 
 ## Device checklist (run on the MacBook Air M5 + OnePlus Pad 3 before each milestone is marked done)
 - [ ] Fresh install on both devices; pairing via QR completes with matching 6-digit codes
