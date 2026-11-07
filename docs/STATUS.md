@@ -1,7 +1,7 @@
 # Status
 
 **Current phase:** 2 — Daily driver (Phase 1 released as v0.1.0 on 2026-11-07)
-**Current milestone:** M2.1 — Notifications mirrored with dismiss sync and inline reply
+**Current milestone:** M2.2 — Trackpad and keyboard from the tablet with Accessibility onboarding
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -24,6 +24,11 @@
   kept as fallback, typed Mac address. Mac open at login (`SMAppService`), reconnect on wake and network change. Android
   battery-exemption prompt, WorkManager watchdog, reconnect on unlock and network change. Phase 1 device gate passed on
   2026-11-07 (throughput and password-manager skip accepted as known issues). Tagged **v0.1.0**.
+- M2.1 — Notifications (ADR 0009). `core`: `notif.posted`/`dismissed`/`action`/`reply`, `NotificationPort`, binary frames on
+  the control channel (icon). Android `NotificationListenerService`, off by default, notification-access prompt, per-app list;
+  Mac `UNUserNotificationCenter` grouped by app with action buttons, inline reply and dismiss sync both ways; DND and
+  screen-sharing mute left to macOS. Device gate passed on 2026-11-07, including WhatsApp on the Mac within 1 s and an
+  inline reply sent.
 
 ## Known issues
 - M1.4 throughput gate (≥ 40 MB/s) not measured: the home Wi-Fi gives raw TCP of only ~7–8 MB/s between the Mac and the
@@ -34,6 +39,10 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M2.1 device gate passed (all 8 checks). M2.1 done; next M2.2.
+- 2026-11-07 — M2.1 built, device gate pending (docs/testing.md, M2.1 gate). `core`: `notif.posted/dismissed/action/reply`,
+  `NotificationPort`, binary frames on the control channel (ADR 0009). Android `NotificationListenerService` with an
+  on/off switch and per-app list; Mac `UNUserNotificationCenter` with action buttons, inline reply and dismiss sync.
 - 2026-11-07 — M1.5 device gate passed, including sleep/wake, 30 min screen off, Wi-Fi switch, watchdog restart and typed
   address. Phase 1 done; tagged v0.1.0. Phase 2 starts with M2.1.
 - 2026-11-07 — M1.5 built, device gate pending (docs/testing.md, M1.5 gate). `core`: `reconnect()` (dial now + 5 s ping probe),

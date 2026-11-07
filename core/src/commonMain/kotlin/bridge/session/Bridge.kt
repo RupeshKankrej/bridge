@@ -8,6 +8,8 @@ import bridge.port.ConnectionListener
 import bridge.port.DiscoveredPeer
 import bridge.port.DiscoveryPort
 import bridge.port.KeyStorePort
+import bridge.port.NotificationEvents
+import bridge.port.NotificationPort
 import bridge.port.TransportPort
 import bridge.port.TrustedPeer
 import bridge.protocol.ClipboardRequest
@@ -16,7 +18,13 @@ import bridge.protocol.Codec
 import bridge.protocol.Envelope
 import bridge.protocol.Hello
 import bridge.protocol.MAX_CLIPBOARD_BYTES
+import bridge.protocol.MAX_ICON_BYTES
 import bridge.protocol.Message
+import bridge.protocol.NotifAction
+import bridge.protocol.NotifDismissed
+import bridge.protocol.NotifPosted
+import bridge.protocol.NotifReply
+import bridge.protocol.PNG_MIME
 import bridge.protocol.PROTOCOL_VERSION
 import bridge.protocol.PairConfirm
 import bridge.protocol.PairReject
@@ -94,6 +102,7 @@ class Bridge internal constructor(
     private val transport: TransportPort,
     private val discovery: DiscoveryPort,
     private val clipboard: ClipboardPort,
+    private val notifications: NotificationPort,
     private val scope: CoroutineScope,
 ) {
     constructor(
@@ -104,7 +113,8 @@ class Bridge internal constructor(
         transport: TransportPort,
         discovery: DiscoveryPort,
         clipboard: ClipboardPort,
-    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+        notifications: NotificationPort,
+    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, notifications, CoroutineScope(SupervisorJob() + Dispatchers.Main))
 
     private val identity = Identity.loadOrCreate(keyStore)
     private val myId = identity.fingerprint
@@ -113,7 +123,11 @@ class Bridge internal constructor(
     val state: StateFlow<BridgeState> = _state.asStateFlow()
 
     private class Session(val conn: Connection, val invite: PairingInvite?) {
-        val incoming = Channel<String>(Channel.UNLIMITED)
+        /** Text frames as String, binary frames as ByteArray, in arrival order. */
+        val incoming = Channel<Any>(Channel.UNLIMITED)
+
+        /** A message whose `binaryLength` frame hasn't arrived yet. */
+        var awaitingBinary: Envelope? = null
         var peer: Hello? = null
         var paired = false
         var missedPongs = 0
@@ -154,6 +168,7 @@ class Bridge internal constructor(
             transport.listen(CONTROL_PORT) { conn -> scope.launch { runSession(conn, expected = null, invite = null) } }
             discovery.browse { peers -> scope.launch { onDiscovered(peers.filter { it.id != myId }) } }
             clipboard.watch { text -> scope.launch { onLocalCopy(text) } }
+            notifications.watch(notificationEvents)
             keyStore.trustedPeers().filter { it.host != null }.forEach { keepConnected(it.fingerprint) }
             refreshPaired()
         }
@@ -296,6 +311,10 @@ class Bridge internal constructor(
                 s.incoming.trySend(text)
             }
 
+            override fun onBinary(bytes: ByteArray) {
+                s.incoming.trySend(bytes)
+            }
+
             override fun onClosed(reason: String) {
                 s.incoming.close()
             }
@@ -312,8 +331,8 @@ class Bridge internal constructor(
                         send(s, Ping)
                     }
                 }
-                for (text in s.incoming) {
-                    handle(s, text)
+                for (frame in s.incoming) {
+                    if (frame is ByteArray) onBinary(s, frame) else handle(s, frame as String)
                     everPaired = everPaired || s.paired
                 }
                 heartbeat.cancel()
@@ -328,6 +347,11 @@ class Bridge internal constructor(
     }
 
     private fun handle(s: Session, text: String) {
+        // The binary frame must come straight after its message (spec §4).
+        if (s.awaitingBinary != null) {
+            s.awaitingBinary = null
+            send(s, ProtocolError("invalid_message", "expected a binary frame"))
+        }
         val env = Codec.decode(text).getOrElse { e ->
             return if (e is UnsupportedTypeException) {
                 send(s, ProtocolError("unsupported_type", "unknown type '${e.type}'"), e.id)
@@ -338,6 +362,25 @@ class Bridge internal constructor(
         if (env.v != PROTOCOL_VERSION) return drop(s, CLOSE_VERSION_MISMATCH, "protocol version ${env.v}")
         val m = env.message
         if (s.peer == null && m !is Hello && m !is Ping && m !is Pong) return send(s, ProtocolError("hello_required", "send hello first"), env.id)
+        if (env.binaryLength != null) {
+            s.awaitingBinary = env
+            return
+        }
+        dispatch(s, env, null)
+    }
+
+    private fun onBinary(s: Session, bytes: ByteArray) {
+        // Tolerant reader: the frame of a message we couldn't decode (e.g. a newer peer's type, already answered) is dropped.
+        val env = s.awaitingBinary ?: return
+        s.awaitingBinary = null
+        if (bytes.size > MAX_ICON_BYTES) return send(s, ProtocolError("too_large", "binary frame over $MAX_ICON_BYTES bytes"), env.id)
+        if (bytes.size.toLong() != env.binaryLength) return send(s, ProtocolError("invalid_message", "binaryLength mismatch"), env.id)
+        dispatch(s, env, bytes)
+    }
+
+    /** [binary] is the frame that followed [env], if it announced one. */
+    private fun dispatch(s: Session, env: Envelope, binary: ByteArray?) {
+        val m = env.message
         // Exhaustive on purpose: a new message type must decide here whether it needs a paired session.
         when (m) {
             Ping -> send(s, Pong, replyTo = env.id)
@@ -363,7 +406,33 @@ class Bridge internal constructor(
                 // Only resend what the peer doesn't already have.
                 clip.takeIf { it.text != null && it.origin != s.peer!!.deviceId }?.let { sendClip(s, it, env.id) }
             }
+            is NotifPosted, is NotifDismissed, is NotifAction, is NotifReply -> if (!s.paired) {
+                send(s, ProtocolError("unauthorized", "pair first"), env.id)
+            } else {
+                when (m) {
+                    is NotifPosted -> notifications.show(m, binary)
+                    is NotifDismissed -> notifications.remove(m.key)
+                    is NotifAction -> notifications.action(m.key, m.actionIndex)
+                    is NotifReply -> notifications.reply(m.key, m.replyText)
+                    else -> {}
+                }
+            }
         }
+    }
+
+    /** Local notification events go to every paired peer online; nothing is queued for offline ones (spec §5.4). */
+    private val notificationEvents = object : NotificationEvents {
+        override fun posted(notification: NotifPosted, icon: ByteArray?) = broadcast(notification, icon?.takeIf { it.size <= MAX_ICON_BYTES })
+
+        override fun dismissed(key: String) = broadcast(NotifDismissed(key))
+
+        override fun action(key: String, index: Int) = broadcast(NotifAction(key, index))
+
+        override fun reply(key: String, text: String) = broadcast(NotifReply(key, text))
+    }
+
+    private fun broadcast(m: Message, png: ByteArray? = null) {
+        scope.launch { online.values.forEach { send(it, m, png = png) } }
     }
 
     private fun onLocalCopy(text: String) {
@@ -501,9 +570,10 @@ class Bridge internal constructor(
         s.incoming.close()
     }
 
-    private fun send(s: Session, m: Message, replyTo: String? = null) {
+    private fun send(s: Session, m: Message, replyTo: String? = null, png: ByteArray? = null) {
         val now = now()
-        s.conn.send(Codec.encode(Envelope(newUlid(now), now, m, replyTo)))
+        s.conn.send(Codec.encode(Envelope(newUlid(now), now, m, replyTo, png?.size?.toLong(), png?.let { PNG_MIME })))
+        png?.let(s.conn::sendBinary)
     }
 }
 

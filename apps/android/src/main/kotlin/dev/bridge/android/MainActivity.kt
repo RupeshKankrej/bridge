@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
     private val app get() = application as BridgeApplication
     private val bridge get() = app.bridge
     private val batteryExempt = mutableStateOf(true)
+    private val notificationAccess = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,7 +59,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    HomeScreen(app, batteryExempt.value, onScan = ::scan, onAllowBackground = ::requestBatteryExemption)
+                    HomeScreen(app, batteryExempt.value, notificationAccess.value, onScan = ::scan, onAllowBackground = ::requestBatteryExemption)
                 }
             }
         }
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
         (application as BridgeApplication).clipboard.setForeground(true)
         // Re-read on every resume: the user answers the system dialog or changes it in Settings.
         batteryExempt.value = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        notificationAccess.value = app.notifications.hasAccess
     }
 
     override fun onPause() {
@@ -91,7 +93,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(app: BridgeApplication, batteryExempt: Boolean, onScan: (host: String) -> Unit, onAllowBackground: () -> Unit) {
+private fun HomeScreen(app: BridgeApplication, batteryExempt: Boolean, notificationAccess: Boolean, onScan: (host: String) -> Unit, onAllowBackground: () -> Unit) {
     val bridge = app.bridge
     val state by bridge.state.collectAsState()
     val resolver = app.contentResolver
@@ -157,6 +159,8 @@ private fun HomeScreen(app: BridgeApplication, batteryExempt: Boolean, onScan: (
         }
 
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+        NotificationsPanel(app.notifications, notificationAccess)
 
         Text("Files", style = MaterialTheme.typography.titleLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

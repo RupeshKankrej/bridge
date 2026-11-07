@@ -94,7 +94,8 @@ final class MacConnection: NSObject, Connection {
     private let connection: NWConnection
     private let queue: DispatchQueue
     private var listener: ConnectionListener?
-    private var pending: [String] = []
+    /// Frames that arrived before `start`, in order (text and binary).
+    private var pending: [(ConnectionListener) -> Void] = []
     private var closedReason: String?
 
     static func accept(_ connection: NWConnection, queue: DispatchQueue, onReady: @escaping (Connection) -> Void) {
@@ -134,7 +135,7 @@ final class MacConnection: NSObject, Connection {
     func start(listener: ConnectionListener) {
         queue.async { [self] in
             self.listener = listener
-            pending.forEach { listener.onText(text: $0) }
+            pending.forEach { $0(listener) }
             pending = []
             if let closedReason { listener.onClosed(reason: closedReason) }
         }
@@ -143,6 +144,14 @@ final class MacConnection: NSObject, Connection {
     func send(text: String) {
         let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
         connection.send(content: Data(text.utf8), contentContext: .init(identifier: "text", metadata: [metadata]),
+                        isComplete: true, completion: .idempotent)
+    }
+
+    /// Binary frames carry e.g. a notification's icon, right after the JSON message announcing it (spec §4).
+    /// NWConnection sends in call order, so it follows the preceding text frame.
+    func sendBinary(bytes: KotlinByteArray) {
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
+        connection.send(content: bytes.data, contentContext: .init(identifier: "binary", metadata: [metadata]),
                         isComplete: true, completion: .idempotent)
     }
 
@@ -169,7 +178,9 @@ final class MacConnection: NSObject, Connection {
             let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
             switch metadata?.opcode {
             case .text:
-                if let data, let text = String(data: data, encoding: .utf8) { deliver(text) }
+                if let data, let text = String(data: data, encoding: .utf8) { deliver { $0.onText(text: text) } }
+            case .binary:
+                if let data { deliver { $0.onBinary(bytes: data.kotlin) } }
             case .close:
                 closed("peer closed")
                 return connection.cancel()
@@ -180,8 +191,8 @@ final class MacConnection: NSObject, Connection {
         }
     }
 
-    private func deliver(_ text: String) {
-        if let listener { listener.onText(text: text) } else { pending.append(text) }
+    private func deliver(_ frame: @escaping (ConnectionListener) -> Void) {
+        if let listener { frame(listener) } else { pending.append(frame) }
     }
 
     private func closed(_ reason: String) {

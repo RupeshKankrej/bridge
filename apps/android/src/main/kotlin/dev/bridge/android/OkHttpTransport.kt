@@ -11,6 +11,8 @@ import okhttp3.Response
 import okhttp3.TlsVersion
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
@@ -61,7 +63,8 @@ private class OkConnection(private var callback: ((Connection?, String?) -> Unit
     @Volatile
     var peerCertificate: ByteArray? = null
     private var listener: ConnectionListener? = null
-    private val pending = mutableListOf<String>()
+    /** Frames that arrived before [start], in order: String for text, ByteString for binary. */
+    private val pending = mutableListOf<Any>()
     private var closedReason: String? = null
     override lateinit var peerFingerprint: String
 
@@ -76,10 +79,17 @@ private class OkConnection(private var callback: ((Connection?, String?) -> Unit
         report(this, null)
     }
 
-    override fun onMessage(webSocket: WebSocket, text: String) = synchronized(lock) {
-        listener?.onText(text) ?: pending.add(text)
+    override fun onMessage(webSocket: WebSocket, text: String) = deliver(text)
+
+    override fun onMessage(webSocket: WebSocket, bytes: ByteString) = deliver(bytes)
+
+    private fun deliver(frame: Any) = synchronized(lock) {
+        listener?.let { deliver(it, frame) } ?: pending.add(frame)
         Unit
     }
+
+    private fun deliver(listener: ConnectionListener, frame: Any) =
+        if (frame is ByteString) listener.onBinary(frame.toByteArray()) else listener.onText(frame as String)
 
     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
         webSocket.close(code, null)
@@ -101,7 +111,7 @@ private class OkConnection(private var callback: ((Connection?, String?) -> Unit
 
     override fun start(listener: ConnectionListener) = synchronized(lock) {
         this.listener = listener
-        pending.forEach(listener::onText)
+        pending.forEach { deliver(listener, it) }
         pending.clear()
         closedReason?.let(listener::onClosed)
         Unit
@@ -109,6 +119,10 @@ private class OkConnection(private var callback: ((Connection?, String?) -> Unit
 
     override fun send(text: String) {
         socket.send(text)
+    }
+
+    override fun sendBinary(bytes: ByteArray) {
+        socket.send(bytes.toByteString())
     }
 
     override fun close(code: Int, reason: String) {

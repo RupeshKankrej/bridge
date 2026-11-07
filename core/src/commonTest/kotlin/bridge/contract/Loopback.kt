@@ -7,8 +7,11 @@ import bridge.port.ConnectionListener
 import bridge.port.DiscoveredPeer
 import bridge.port.DiscoveryPort
 import bridge.port.KeyStorePort
+import bridge.port.NotificationEvents
+import bridge.port.NotificationPort
 import bridge.port.TransportPort
 import bridge.port.TrustedPeer
+import bridge.protocol.NotifPosted
 import bridge.protocol.Platform
 import bridge.session.Bridge
 import kotlinx.coroutines.CoroutineScope
@@ -83,13 +86,14 @@ class Lan(val clock: () -> Long) {
 class LoopConnection(override val peerFingerprint: String, private val lan: Lan) : Connection {
     lateinit var other: LoopConnection
     private var listener: ConnectionListener? = null
-    private val pending = mutableListOf<String>()
+    /** Frames that arrived before [start]: String for text, ByteArray for binary. */
+    private val pending = mutableListOf<Any>()
     var closeCode: Int? = null
         private set
 
     override fun start(listener: ConnectionListener) {
         this.listener = listener
-        pending.forEach(listener::onText)
+        pending.forEach { deliver(listener, it) }
         pending.clear()
         if (closeCode != null) listener.onClosed("closed")
     }
@@ -100,10 +104,18 @@ class LoopConnection(override val peerFingerprint: String, private val lan: Lan)
         if (!lan.partitioned) other.receive(text)
     }
 
-    private fun receive(text: String) {
+    override fun sendBinary(bytes: ByteArray) {
         if (closeCode != null) return
-        listener?.onText(text) ?: pending.add(text)
+        if (!lan.partitioned) other.receive(bytes)
     }
+
+    private fun receive(frame: Any) {
+        if (closeCode != null) return
+        listener?.let { deliver(it, frame) } ?: pending.add(frame)
+    }
+
+    private fun deliver(listener: ConnectionListener, frame: Any) =
+        if (frame is ByteArray) listener.onBinary(frame) else listener.onText(frame as String)
 
     override fun close(code: Int, reason: String) {
         if (closeCode != null) return
@@ -172,6 +184,35 @@ class FakeClipboard : ClipboardPort {
     }
 }
 
+/** Records what core asked the platform to do; [events] stands in for the user and the OS. */
+class FakeNotifications : NotificationPort {
+    lateinit var events: NotificationEvents
+    val shown = mutableListOf<Pair<NotifPosted, ByteArray?>>()
+    val removed = mutableListOf<String>()
+    val actions = mutableListOf<Pair<String, Int>>()
+    val replies = mutableListOf<Pair<String, String>>()
+
+    override fun watch(events: NotificationEvents) {
+        this.events = events
+    }
+
+    override fun show(notification: NotifPosted, icon: ByteArray?) {
+        shown += notification to icon
+    }
+
+    override fun remove(key: String) {
+        removed += key
+    }
+
+    override fun action(key: String, index: Int) {
+        actions += key to index
+    }
+
+    override fun reply(key: String, text: String) {
+        replies += key to text
+    }
+}
+
 class Device(val lan: Lan, val host: String, name: String, platform: Platform, scope: CoroutineScope) {
     val keyStore = FakeKeyStore()
     private val myFingerprint by lazy { fingerprint(keyStore.loadCertificate()!!) }
@@ -193,7 +234,8 @@ class Device(val lan: Lan, val host: String, name: String, platform: Platform, s
     }
 
     val clipboard = FakeClipboard()
-    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, scope)
+    val notifications = FakeNotifications()
+    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, notifications, scope)
     val id get() = bridge.state.value.deviceId
     val state get() = bridge.state.value
 }

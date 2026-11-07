@@ -22,6 +22,9 @@ interface Connection {
 
     fun send(text: String)
 
+    /** Sends a binary frame; it must arrive right after the text frame sent before it (spec §4). */
+    fun sendBinary(bytes: ByteArray)
+
     /** Sends a WebSocket close frame with [code] (e.g. 4001 for a protocol-version mismatch) and drops the socket. */
     fun close(code: Int, reason: String)
 }
@@ -29,6 +32,9 @@ interface Connection {
 /** Called from any thread. */
 interface ConnectionListener {
     fun onText(text: String)
+
+    /** A binary frame, in order with the text frames. */
+    fun onBinary(bytes: ByteArray) {}
 
     /** Called once, whether the peer or we closed it. */
     fun onClosed(reason: String)
