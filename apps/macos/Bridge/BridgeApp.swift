@@ -34,7 +34,8 @@ final class BridgeModel: ObservableObject {
             appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
             keyStore: keyStore,
             transport: network,
-            discovery: network
+            discovery: network,
+            clipboard: MacClipboard()
         )
         // App Nap would stretch the 15 s heartbeat timers of a windowless app until the tablet drops us.
         activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep, reason: "Keep the tablet session alive")

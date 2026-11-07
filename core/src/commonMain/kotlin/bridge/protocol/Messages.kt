@@ -63,3 +63,22 @@ data class PairConfirm(val fingerprint: String, val confirmCode: String) : Messa
 @Serializable
 @SerialName("pair.reject")
 data class PairReject(val fingerprint: String, val confirmCode: String) : Message
+
+const val TEXT_MIME = "text/plain"
+
+/** UTF-8 cap for clipboard text (spec §5.2); larger content goes as a file. */
+const val MAX_CLIPBOARD_BYTES = 1_048_576
+
+/**
+ * Clipboard content (spec §5.2). The envelope's `ts` is when the content was copied, not when this
+ * message was sent, so a resend after `clipboard.request` still loses to anything copied later.
+ * Phase 1 sends `text/plain` only; [text] is optional because images (Phase 2) come as a binary frame.
+ */
+@Serializable
+@SerialName("clipboard.set")
+data class ClipboardSet(val mime: String, val text: String? = null, val sourceApp: String? = null) : Message
+
+/** Asks the peer to resend its current clipboard as a `clipboard.set` with `replyTo` set. */
+@Serializable
+@SerialName("clipboard.request")
+data object ClipboardRequest : Message

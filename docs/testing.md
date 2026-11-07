@@ -27,6 +27,17 @@
 - [ ] Scan a QR, then change one digit by scanning a stale QR: refused, and the Mac shows a new code
 - [ ] Forget on the Mac: within a few seconds the tablet shows it is no longer trusted
 
+## M1.3 gate (clipboard text)
+Rebuild both apps as in the M1.2 gate; the devices stay paired.
+- [x] Copy text on the Mac, paste on the tablet: arrives within 150 ms of the Mac noticing the copy (the 250 ms poll adds up to 250 ms on top; see ADR 0006)
+- [x] Copy text in any tablet app, pull down quick settings, tap "Send clipboard" (add the tile once via the pencil icon): toast "Clipboard sent", paste on the Mac
+- [x] Same via the "Send clipboard" action on the "Bridge is running" notification
+- [x] With Bridge open on the tablet, copy text in its window (e.g. long-press a field): reaches the Mac without the tile
+- [x] Text received on either side does not bounce back (copy on the Mac once; the tablet's toast/clipboard shows no second change, and the Mac's pasteboard isn't rewritten)
+- [ ] Copy a password from a password manager on the Mac (1Password, Passwords app): not sent — **fails**, known issue in STATUS.md
+- [x] Copy > 1 MB of text on the Mac: not sent; the menu shows "over 1 MB"
+- [x] Turn tablet Wi-Fi off, copy on the Mac, turn Wi-Fi on: after reconnect the tablet has the new text
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)

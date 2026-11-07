@@ -18,10 +18,13 @@ class BridgeService : Service() {
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(NotificationChannel(CHANNEL, "Connection", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        // Background apps can't read the clipboard; this opens ClipboardActivity, which can.
+        val sendClipboard = PendingIntent.getActivity(this, 1, Intent(this, ClipboardActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("Bridge is running")
             .setContentIntent(open)
+            .addAction(Notification.Action.Builder(null, "Send clipboard", sendClipboard).build())
             .setOngoing(true)
             .build()
         startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)

@@ -8,6 +8,8 @@ import bridge.session.Bridge
 
 /** Owns the single core [Bridge]; [BridgeService] keeps the process alive, [MainActivity] observes it. */
 class BridgeApplication : Application() {
+    val clipboard by lazy { AndroidClipboard(this) }
+
     val bridge: Bridge by lazy {
         val keyStore = AndroidKeyStorePort(this)
         Bridge(
@@ -17,6 +19,7 @@ class BridgeApplication : Application() {
             keyStore = keyStore,
             transport = OkHttpTransport(keyStore),
             discovery = NsdDiscovery(this),
+            clipboard = clipboard,
         )
     }
 }

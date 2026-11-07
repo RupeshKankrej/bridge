@@ -195,6 +195,10 @@ Bridge extensions, only between two Bridge peers: resumable uploads via a `Range
 - Mac polls `NSPasteboard.general.changeCount` every 250 ms (no change event exists). Android registers `OnPrimaryClipChangedListener` while in the foreground.
 - On change, send `clipboard.set` with text (UTF-8, up to 1 MB) or an image (PNG, up to 10 MB). Larger content is offered as a file instead.
 - Receiving side writes to the OS clipboard and marks the entry with a Bridge origin tag so it does not echo back. Conflicts resolve by `ts`, newest wins.
+  - For `clipboard.set`, the envelope `ts` is when the content was copied, not when the message was sent. Ties break on the copying device's ID, so both sides pick the same winner. A local copy gets `ts = max(now, ts of the newest known item + 1)` so a peer clock running ahead can't make a real copy lose (ADR 0006).
+  - Origin tag: an extra pasteboard type `dev.bridge.origin` on macOS; the clip label `dev.bridge.origin` on Android. As a backstop, `core` never sends text equal to the clipboard it already shares.
+  - After every (re)connect each side sends `clipboard.request`. The peer answers with a `clipboard.set` (`replyTo` set, original `ts`) only if it holds an item it didn't receive from the requester; otherwise it doesn't answer. Items copied before the requester's app started never overwrite its clipboard, because the requester can't know how old its own OS clipboard is.
+  - `clipboard.*` from an unpaired session gets `error {code: "unauthorized"}`. Text over 1 MB gets `error {code: "too_large"}`; a mime other than `text/plain` gets `unsupported_mime` (until Phase 2).
 - Android 10+ limitation: a background app cannot read the clipboard. Mitigations, in order of preference: (a) quick-settings tile "Send clipboard"; (b) share-sheet target "Send to Mac"; (c) a persistent notification with a "Sync clipboard" action. Mac → tablet always works because writing the clipboard is allowed in the background.
 - Sensitive content: skip items flagged `org.nspasteboard.ConcealedType` (password managers) on Mac and `EXTRA_IS_SENSITIVE` on Android.
 
@@ -388,7 +392,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 
 - [x] M1.1 `core` builds for JVM, Android and macOS; `hello`/`ping` round-trip in a JVM test
 - [x] M1.2 mDNS discovery + QR pairing between the real MacBook and tablet
-- [ ] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
+- [x] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
 - [ ] M1.4 LocalSend server passes interop with the official LocalSend app, both directions
 - [ ] M1.5 Mac menu-bar app and Android foreground service stay connected across sleep/wake
 
