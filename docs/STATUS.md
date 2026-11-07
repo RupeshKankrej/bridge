@@ -1,7 +1,7 @@
 # Status
 
 **Current phase:** 2 — Daily driver (Phase 1 released as v0.1.0 on 2026-11-07)
-**Current milestone:** M2.3 — Media controls, battery, share-to-device
+**Current milestone:** M2.4 — AirDrop visibility toggle, receive-folder and transfer-list plumbing
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -35,7 +35,20 @@
   two-finger scroll and right-click, pinch = ⌘=/⌘−) and keyboard bar with sticky modifiers; `TCP_NODELAY` on the control
   socket and a low-latency Wi-Fi lock while the trackpad is open. Device gate passed on 2026-11-07 (Wi-Fi latency below).
 
+- M2.3 — Media controls, battery, share-to-device (ADR 0011). Done on 2026-11-07 with the media gate failed and accepted
+  (Known issues).
+  `core`: `media.state`/`media.command` (with watch/unwatch), `battery.state`, `share.text`, `MediaPort`, `SharePort`.
+  Mac: media keys for whatever plays plus system volume (no MediaRemote, no player AppleScript, by agreement), tablet battery beside the menu-bar icon,
+  Services "Send to Tablet". Android: media card on the home screen, battery every 5 min and on charger change, text and
+  link share target, links/text from the Mac as notifications; three switches, off by default.
+
 ## Known issues
+- M2.3 media controls don't work: the tablet's card shows, but ⏯ ⏭ ⏮ and the volume slider have no effect on the Mac
+  (2026-11-07, YouTube in the browser). Not investigated; accepted as is by agreement. Suspects, in order: the Mac
+  build's Accessibility grant went stale after re-signing (the tablet would show a `permission_missing` message), the
+  posted system-defined events not reaching the Now Playing app on macOS 26, and the volume AppleScript failing under the
+  hardened runtime. Next step: check Console for `dev.bridge.mac` while tapping ⏯, then re-grant Accessibility.
+  The charger ⚡︎ icon was not checked.
 - M2.2 trackpad: pointer lag and jitter come mostly from Wi-Fi. With the app fixes (TCP_NODELAY, low-latency Wi-Fi lock on the
   tablet) the Mac's AWDL still adds spikes up to ~250 ms, and the home Wi-Fi ~130–180 ms even with both radios busy
   (ADR 0010). Workaround: `sudo ifconfig awdl0 down` (disables AirDrop/Handoff until `up` or reboot). Accepted as is on
@@ -48,6 +61,13 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M2.3 done. Share and battery-level checks passed; media controls show on the tablet but don't act on the
+  Mac, accepted as a known issue. Next: M2.4.
+- 2026-11-07 — M2.3 share checks passed on the devices (link Chrome → Mac browser, text both ways, switch off, offline).
+  Battery checks passed too. Media switched from Spotify/Music AppleScript to media keys (Rupesh uses neither app);
+  the gate is now play/pause of whatever plays, still to run. The re-signed Mac build needed its Local Network grant renewed (docs/testing.md).
+- 2026-11-07 — M2.3 built, device gate pending. MediaRemote dropped for AppleScript only (hard rule 7; macOS 15.4+ blocks
+  it for non-Apple apps anyway). See ADR 0011.
 - 2026-11-07 — M2.1 device gate passed (all 8 checks). M2.1 done; next M2.2.
 - 2026-11-07 — M2.1 built, device gate pending (docs/testing.md, M2.1 gate). `core`: `notif.posted/dismissed/action/reply`,
   `NotificationPort`, binary frames on the control channel (ADR 0009). Android `NotificationListenerService` with an

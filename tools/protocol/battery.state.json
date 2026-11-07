@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/battery.state.json",
+  "title": "battery.state payload",
+  "description": "Tablet → Mac, on connect, every 5 minutes and when a charger is plugged in or out, while battery reporting is on.",
+  "type": "object",
+  "required": ["level", "charging"],
+  "properties": {
+    "level": { "type": "integer", "minimum": 0, "description": "percent, 0–100" },
+    "charging": { "type": "boolean", "description": "a charger is connected" }
+  },
+  "additionalProperties": false
+}

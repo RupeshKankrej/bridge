@@ -27,13 +27,7 @@ final class MacNotifications: NSObject, NotificationPort, UNUserNotificationCent
     func watch(events: NotificationEvents) { self.events = events }
 
     func show(notification n: NotifPosted, icon: KotlinByteArray?) {
-        // Spec §6: ask for Notifications permission at the first mirrored notification, not at launch.
-        if !askedPermission {
-            askedPermission = true
-            center.requestAuthorization(options: [.alert, .sound]) { [onProblem] granted, _ in
-                if !granted { DispatchQueue.main.async { onProblem("Allow notifications for Bridge in System Settings → Notifications to see the tablet's") } }
-            }
-        }
+        askPermissionOnce()
         let content = UNMutableNotificationContent()
         content.title = n.title
         content.subtitle = n.app
@@ -47,6 +41,24 @@ final class MacNotifications: NSObject, NotificationPort, UNUserNotificationCent
         center.add(UNNotificationRequest(identifier: n.key, content: content, trigger: nil)) { error in
             if let error { log.debug("notification not shown: \(error)") }
         }
+    }
+
+    /// Spec §6: ask for Notifications permission at the first notification, not at launch.
+    private func askPermissionOnce() {
+        guard !askedPermission else { return }
+        askedPermission = true
+        center.requestAuthorization(options: [.alert, .sound]) { [onProblem] granted, _ in
+            if !granted { DispatchQueue.main.async { onProblem("Allow notifications for Bridge in System Settings → Notifications to see the tablet's") } }
+        }
+    }
+
+    /// A plain Bridge notice, e.g. "Text from your tablet · Copied to the clipboard".
+    func notice(title: String, body: String) {
+        askPermissionOnce()
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     func remove(key: String) {

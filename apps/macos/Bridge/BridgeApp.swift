@@ -38,19 +38,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         popover.contentViewController = hosting
         popover.behavior = .transient
 
-        model.$state.sink { [weak self] _ in self?.updateIcon() }.store(in: &subscriptions)
+        // @Published emits before the property changes, so use the value passed in, not model.state.
+        model.$state.sink { [weak self] state in self?.updateIcon(state) }.store(in: &subscriptions)
         model.onAttention = { [weak self] in self?.showPopover() }
         model.onOffer = { [weak self] offer in self?.notify(offer) }
 
-        // Finder → Services → "Send with Bridge" (NSServices in Info.plist).
+        // Finder → Services → "Send with Bridge", and "Send to Tablet" for selected text and links (NSServices in Info.plist).
         services = ServicesProvider(model: model)
         NSApp.servicesProvider = services
         NSUpdateDynamicServices()
     }
 
-    private func updateIcon() {
-        let name = model.isConnected ? "link.circle.fill" : "link.circle"
-        statusItem?.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "Bridge")
+    /// The icon, plus the tablet's battery next to it once the tablet reports it (spec §5.6).
+    private func updateIcon(_ state: BridgeState?) {
+        guard let statusItem, let button = statusItem.button else { return }
+        let online = state?.paired.first { $0.online }
+        button.image = NSImage(systemSymbolName: online != nil ? "link.circle.fill" : "link.circle", accessibilityDescription: "Bridge")
+        let battery = online?.battery.map(batteryText)
+        statusItem.length = battery == nil ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        button.title = battery.map { " " + $0 } ?? ""
+        button.imagePosition = .imageLeft
     }
 
     @objc private func togglePopover() {
@@ -113,8 +120,10 @@ private final class OfferPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-/// Target of the Finder Services item. Its title is fixed in Info.plist, so it can't name the device;
-/// the popover asks which device unless exactly one paired device is nearby.
+func batteryText(_ b: BatteryState) -> String { "\(b.level)%" + (b.charging ? " ⚡︎" : "") }
+
+/// Target of the Services items. Their titles are fixed in Info.plist, so they can't name the device;
+/// for files the popover asks which device unless exactly one paired device is nearby; text goes to every connected one.
 final class ServicesProvider: NSObject {
     private let model: BridgeModel
 
@@ -124,6 +133,12 @@ final class ServicesProvider: NSObject {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         // AppKit calls service handlers on the main thread.
         MainActor.assumeIsolated { model.send(urls) }
+    }
+
+    /// "Send to Tablet": selected text, or a link (e.g. from a browser's address field), opens on the tablet (F12).
+    @objc func sendText(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: .URL) else { return }
+        MainActor.assumeIsolated { model.share(text) }
     }
 }
 
@@ -151,6 +166,8 @@ final class BridgeModel: ObservableObject {
         let keyStore = MacKeyStore()
         let network = MacNetwork(identity: keyStore.tlsIdentity)
         let problems = PassthroughSubject<String?, Never>()
+        let notifications = MacNotifications { problems.send($0) }
+        let input = MacInput { problems.send($0) }
         bridge = Bridge(
             name: Host.current().localizedName ?? "Mac",
             platform: .macos,
@@ -159,8 +176,10 @@ final class BridgeModel: ObservableObject {
             transport: network,
             discovery: network,
             clipboard: MacClipboard(),
-            notifications: MacNotifications { problems.send($0) },
-            input: MacInput { problems.send($0) }
+            notifications: notifications,
+            input: input,
+            media: MacMedia(input: input),
+            share: MacShare(notifications: notifications)
         )
         // After Bridge, which creates the identity on first launch.
         fileTransfer = FileTransfer(
@@ -244,6 +263,15 @@ final class BridgeModel: ObservableObject {
         pendingSend = []
     }
 
+    /// Services "Send to Tablet". Offline: say so in the popover (spec §7) rather than dropping it silently.
+    func share(_ text: String) {
+        guard isConnected else {
+            problem = "The tablet isn't connected, so the text wasn't sent"
+            return onAttention()
+        }
+        bridge.share(text: text)
+    }
+
     func cancelPendingSend() { pendingSend = [] }
     func refreshNearby() { fileTransfer.refresh() }
     func respond(offerId: String, accept: Bool) { fileTransfer.respond(offerId: offerId, accept: accept) }
@@ -274,6 +302,7 @@ struct MenuView: View {
                         Circle().fill(peer.online ? Color.green : Color.secondary).frame(width: 8, height: 8)
                         Text("Paired with \(peer.name)")
                         Spacer()
+                        if let battery = peer.battery { Text(batteryText(battery)).foregroundStyle(.secondary) }
                         Button("Forget") { model.forget(peer.fingerprint) }
                     }
                 }

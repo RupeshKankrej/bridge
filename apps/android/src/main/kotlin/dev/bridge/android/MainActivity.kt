@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,9 +80,12 @@ class MainActivity : ComponentActivity() {
         // Re-read on every resume: the user answers the system dialog or changes it in Settings.
         batteryExempt.value = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
         notificationAccess.value = app.notifications.hasAccess
+        // Now-playing only while Bridge is on screen: the Mac polls its players only while watched (ADR 0011).
+        bridge.watchMedia(app.features.media.on.value)
     }
 
     override fun onPause() {
+        bridge.watchMedia(false)
         (application as BridgeApplication).clipboard.setForeground(false)
         super.onPause()
     }
@@ -111,6 +115,9 @@ private fun HomeScreen(
 ) {
     val bridge = app.bridge
     val state by bridge.state.collectAsState()
+    val mediaOn by app.features.media.on.collectAsState()
+    // The switch flipped while on screen; onResume/onPause cover the rest.
+    LaunchedEffect(mediaOn) { bridge.watchMedia(mediaOn) }
     val resolver = app.contentResolver
     val scope = rememberCoroutineScope()
     // Persistable grants keep picked files readable later, e.g. when an upload resumes after a drop.
@@ -149,6 +156,7 @@ private fun HomeScreen(
                 Button(onClick = onTrackpad, enabled = peer.online) { Text("Trackpad") }
                 OutlinedButton(onClick = { bridge.unpair(peer.fingerprint) }) { Text("Forget") }
             }
+            if (mediaOn && peer.online) MediaCard(bridge, peer)
         }
 
         val pairing = state.pairing
@@ -179,6 +187,8 @@ private fun HomeScreen(
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         NotificationsPanel(app.notifications, notificationAccess)
+
+        FeaturesPanel(app.features)
 
         Text("Files", style = MaterialTheme.typography.titleLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

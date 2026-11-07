@@ -6,6 +6,7 @@ import android.provider.Settings
 import bridge.files.FileTransfer
 import bridge.files.LocalSendPeer
 import bridge.port.InputPort
+import bridge.port.MediaPort
 import bridge.port.OutgoingFile
 import bridge.protocol.Platform
 import bridge.session.Bridge
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class BridgeApplication : Application() {
     val clipboard by lazy { AndroidClipboard(this) }
     val notifications by lazy { AndroidNotifications(this) }
+    val features by lazy { Features(this) }
     private val keyStore by lazy { AndroidKeyStorePort(this) }
     private val deviceName get() = Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
 
@@ -32,6 +34,9 @@ class BridgeApplication : Application() {
             notifications = notifications,
             // The tablet sends input; it never injects any.
             input = object : InputPort {},
+            // The tablet shows the Mac's media; it has no player of its own to report.
+            media = object : MediaPort {},
+            share = AndroidShare(this, features.share.on),
         )
     }
 

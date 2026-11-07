@@ -69,6 +69,17 @@ class CodecSchemaTest {
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RW", ts = 1_762_440_025_016, message = InputPointer(gesture = InputGesture.ZOOM_OUT)),
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RX", ts = 1_762_440_026_000, message = InputKey(keyCode = MacKey.forChar('c')!!.first, modifiers = MOD_COMMAND or MOD_SHIFT)),
         Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RY", ts = 1_762_440_026_100, message = InputKey(text = "naïve 🙂")),
+        Envelope(
+            id = "01JBV0R0Z7Q4X8K3M5N6P7Q8RZ",
+            ts = 1_762_440_027_000,
+            message = MediaState("Spotify", "Dreams", "Fleetwood Mac", playing = true, position = 61.5, duration = 257.0, volume = 70),
+        ),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8S0", ts = 1_762_440_027_100, message = MediaState()),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8S1", ts = 1_762_440_028_000, message = MediaCommand(MediaAction.WATCH)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8S2", ts = 1_762_440_028_100, message = MediaCommand(MediaAction.VOLUME, 35)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8S3", ts = 1_762_440_029_000, message = BatteryState(82, charging = true)),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8S4", ts = 1_762_440_030_000, message = ShareText(url = "https://example.com/a?b=c#d")),
+        Envelope(id = "01JBV0R0Z7Q4X8K3M5N6P7Q8S5", ts = 1_762_440_030_100, message = ShareText(text = "Meet at 7\nTable for 2 ✓")),
     )
 
     @Test

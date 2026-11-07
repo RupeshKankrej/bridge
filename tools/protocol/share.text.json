@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/share.text.json",
+  "title": "share.text payload",
+  "description": "Either way. Exactly one of url (http or https only; opened in the browser) or text (at most 1 MB UTF-8). A receiver with receiving turned off answers error share_off. Never logged.",
+  "type": "object",
+  "properties": {
+    "text": { "type": "string" },
+    "url": { "type": "string", "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://\\S+$" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/media.command.json",
+  "title": "media.command payload",
+  "description": "Tablet → Mac. play, pause, next, prev control the current player; volume sets its volume to the volume field (0–100). watch / unwatch start and stop media.state on this connection; the Mac polls its players only while watched.",
+  "type": "object",
+  "required": ["action"],
+  "properties": {
+    "action": { "enum": ["play", "pause", "next", "prev", "volume", "watch", "unwatch"] },
+    "volume": { "type": "integer", "minimum": 0, "description": "0–100; required with action volume" }
+  },
+  "additionalProperties": false
+}

@@ -161,3 +161,63 @@ data class InputPointer(
 @Serializable
 @SerialName("input.key")
 data class InputKey(val keyCode: Int? = null, val modifiers: Int = 0, val text: String? = null) : Message
+
+/**
+ * Mac → tablet: what the Mac is playing (spec §5.6). All fields null = nothing playing. [position] and [duration] are
+ * seconds; the Mac sends on every change but not for the position ticking along, so the receiver advances [position]
+ * itself while [playing]. [volume] is the player's own volume, 0–100.
+ */
+@Serializable
+@SerialName("media.state")
+data class MediaState(
+    val app: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    val playing: Boolean = false,
+    val position: Double? = null,
+    val duration: Double? = null,
+    val volume: Int? = null,
+) : Message
+
+@Serializable
+enum class MediaAction {
+    @SerialName("play") PLAY,
+    @SerialName("pause") PAUSE,
+    @SerialName("next") NEXT,
+    @SerialName("prev") PREV,
+
+    /** Set the player's volume to `media.command.volume`. */
+    @SerialName("volume") VOLUME,
+
+    /** Start / stop sending `media.state` to this peer; the Mac only polls players while someone watches (ADR 0011). */
+    @SerialName("watch") WATCH,
+    @SerialName("unwatch") UNWATCH,
+}
+
+/** Tablet → Mac: control the Mac's player. [volume] (0–100) only with [MediaAction.VOLUME]. */
+@Serializable
+@SerialName("media.command")
+data class MediaCommand(val action: MediaAction, val volume: Int? = null) : Message
+
+/** Tablet → Mac: battery [level] in percent and whether a charger is connected (spec §5.6). */
+@Serializable
+@SerialName("battery.state")
+data class BatteryState(val level: Int, val charging: Boolean) : Message
+
+/**
+ * Either way: open a shared link or text on the peer (F12). Exactly one of [url] (http or https; opened in the
+ * browser) or [text] (at most [MAX_CLIPBOARD_BYTES]). Never log either.
+ */
+@Serializable
+@SerialName("share.text")
+data class ShareText(val text: String? = null, val url: String? = null) : Message {
+    companion object {
+        /** A shared string that is just one http(s) link becomes [url]; anything else is [text]. */
+        fun of(shared: String): ShareText {
+            val s = shared.trim()
+            return if (isWebUrl(s)) ShareText(url = s) else ShareText(text = shared)
+        }
+
+        fun isWebUrl(s: String) = s.none { it.isWhitespace() } && (s.startsWith("https://", true) || s.startsWith("http://", true)) && s.length > 8
+    }
+}

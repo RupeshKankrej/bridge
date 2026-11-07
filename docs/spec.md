@@ -153,9 +153,10 @@ Binary payloads (clipboard images, thumbnails) are sent as a WebSocket binary fr
 | notif.action / notif.reply | Mac → tablet | key, actionIndex (into notif.posted actions[]) or replyText | 2 |
 | input.pointer | tablet → Mac | dx, dy (Mac points), buttons (held: 1 left, 2 right), scrollX, scrollY (pixels, content direction), gesture (zoomIn / zoomOut) | 2 |
 | input.key | tablet → Mac | keyCode (macOS virtual key code) + modifiers (1 ⇧, 2 ⌃, 4 ⌥, 8 ⌘), or text | 2 |
-| media.state / media.command | both | title, artist, playing, position; play, pause, next, prev, volume | 2 |
-| battery.state | both | level, charging | 2 |
-| share.text | both | text or url | 2 |
+| media.state | Mac → tablet | volume (0–100, system output); optional app, title, artist, playing, position, duration (seconds) for a sender that knows them | 2 |
+| media.command | tablet → Mac | action: play, pause, next, prev, volume (+ volume 0–100), watch / unwatch (start / stop media.state) | 2 |
+| battery.state | tablet → Mac | level (percent), charging (charger connected) | 2 |
+| share.text | both | text or url (http/https only), exactly one; error `share_off` if receiving is turned off | 2 |
 | screen.offer / screen.answer / screen.ice | both | WebRTC SDP and ICE candidates (signalling only) | 3 |
 | screen.touch | tablet → Mac | normalised x, y, action; mapped to the mirrored display | 3 |
 | error | both | code (snake_case string), message; the failed request is the envelope's replyTo | 1 |
@@ -234,8 +235,21 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
 
 ### 5.6 Media controls and battery (F7)
 
-- Mac reads now-playing via `MediaRemote` (private framework; fallback to AppleScript for Music/Spotify) and sends `media.state`; tablet shows a controller and sends `media.command`.
-- Tablet sends `battery.state` every 5 minutes or on charger change; Mac menu bar shows the tablet's level.
+- Tablet shows a controller card on its home screen and sends `media.command`. The Mac turns play/pause, next and prev
+  into the keyboard's media keys, so they reach whatever is playing (browser, Spotify, Music, VLC); it needs the
+  Accessibility permission shared with remote input. Volume is the Mac's system output volume. The Mac can't say what's
+  playing: `MediaRemote` is a private framework (hard rule 7) and macOS 15.4+ only gives its data to Apple apps, so the
+  card shows controls and volume without a title (ADR 0011).
+- The Mac reports the volume once a second only while a tablet watches: the tablet sends `media.command` watch while
+  Bridge is on screen there with media controls on, and unwatch when it leaves. Unchanged states aren't resent; for a
+  sender that reports a position, ticks aren't sent either, the receiver advances it, and a seek (> 2 s off) is.
+- Tablet sends `battery.state` on connect, every 5 minutes and on charger change while battery reporting is on; Mac menu
+  bar shows the tablet's level next to the icon.
+- Share (F12): tablet share-sheet target for text and links ("Bridge"), Mac Services item "Send to Tablet" for selected
+  text and links; both send `share.text`. A link (the whole shared text is one http(s) URL) opens in the browser; other
+  text goes on the Mac's clipboard with a notice, or becomes a tablet notification that opens the share sheet. Tablets
+  get a notification rather than an opened browser because Android 10+ blocks activity starts from the background.
+- Each of media controls, battery reporting and links/text has its own switch on the tablet, off by default (spec §7).
 
 ### 5.7 Screen mirroring: tablet → Mac (F8)
 
@@ -334,6 +348,7 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 | Auto-accept files | Paired devices only | Options: always ask / paired only / everyone on LAN |
 | AirDrop visibility | Bridge devices only | Receiving Off / Bridge devices only / Everyone for 10 minutes; also in the quick tile and Mac menu bar (see 5.10) |
 | Notification mirroring | Off | Per-app list on tablet |
+| Media controls, battery on Mac, links and text | Off | Three switches on the tablet (5.6) |
 | Mirroring quality | Auto | Resolution, fps and bitrate caps |
 | Trusted networks | All | Optionally restrict to named Wi-Fi SSIDs |
 | Launch at login / boot | On | |
@@ -409,7 +424,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 
 - [x] M2.1 Notifications mirrored with dismiss sync and inline reply
 - [x] M2.2 Trackpad and keyboard from the tablet with Accessibility onboarding
-- [ ] M2.3 Media controls, battery, share-to-device
+- [x] M2.3 Media controls, battery, share-to-device (media controls known not to work yet; STATUS)
 - [ ] M2.4 AirDrop visibility toggle, receive-folder and transfer-list plumbing (UI only; wired to Tier A if Quick Share support reaches the Pad 3, otherwise to Tier B in Phase 3)
 - [ ] M2.5 Two weeks of daily use without manual reconnects
 

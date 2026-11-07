@@ -9,10 +9,13 @@ import bridge.port.DiscoveredPeer
 import bridge.port.DiscoveryPort
 import bridge.port.InputPort
 import bridge.port.KeyStorePort
+import bridge.port.MediaPort
 import bridge.port.NotificationEvents
 import bridge.port.NotificationPort
+import bridge.port.SharePort
 import bridge.port.TransportPort
 import bridge.port.TrustedPeer
+import bridge.protocol.BatteryState
 import bridge.protocol.ClipboardRequest
 import bridge.protocol.ClipboardSet
 import bridge.protocol.Codec
@@ -24,6 +27,9 @@ import bridge.protocol.InputPointer
 import bridge.protocol.MacKey
 import bridge.protocol.MAX_CLIPBOARD_BYTES
 import bridge.protocol.MAX_ICON_BYTES
+import bridge.protocol.MediaAction
+import bridge.protocol.MediaCommand
+import bridge.protocol.MediaState
 import bridge.protocol.Message
 import bridge.protocol.NotifAction
 import bridge.protocol.NotifDismissed
@@ -38,6 +44,7 @@ import bridge.protocol.Ping
 import bridge.protocol.Platform
 import bridge.protocol.Pong
 import bridge.protocol.ProtocolError
+import bridge.protocol.ShareText
 import bridge.protocol.TEXT_MIME
 import bridge.protocol.UnsupportedTypeException
 import bridge.protocol.newUlid
@@ -54,6 +61,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.math.abs
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -74,6 +82,9 @@ internal val PROBE_TIMEOUT = 5.seconds
 /** Remote input is capped at 120 messages a second (spec §5.5). */
 internal val INPUT_INTERVAL = 1000.milliseconds / 120
 
+/** A now-playing position further than this from where it should be by now is a seek, worth a `media.state`. */
+internal const val SEEK_TOLERANCE_S = 2.0
+
 data class BridgeState(
     /** This device's certificate fingerprint. */
     val deviceId: String,
@@ -87,8 +98,19 @@ data class BridgeState(
     val message: String? = null,
 )
 
-/** [host] is the address this side dials, or null on the side that only accepts. */
-data class PeerStatus(val fingerprint: String, val name: String, val online: Boolean, val host: String? = null)
+/**
+ * [host] is the address this side dials, or null on the side that only accepts. [battery] and [media] are what the
+ * peer sent on its current connection; [mediaAt] is when [media] arrived (epoch ms), to advance its position.
+ */
+data class PeerStatus(
+    val fingerprint: String,
+    val name: String,
+    val online: Boolean,
+    val host: String? = null,
+    val battery: BatteryState? = null,
+    val media: MediaState? = null,
+    val mediaAt: Long = 0,
+)
 
 /** [awaitingLocalConfirm]: this side (the scanner) shows Confirm / Cancel; otherwise it waits for the peer. */
 data class Pairing(val peerName: String, val code: String, val awaitingLocalConfirm: Boolean)
@@ -113,6 +135,8 @@ class Bridge internal constructor(
     private val clipboard: ClipboardPort,
     private val notifications: NotificationPort,
     private val input: InputPort,
+    private val media: MediaPort,
+    private val share: SharePort,
     private val scope: CoroutineScope,
 ) {
     constructor(
@@ -125,7 +149,9 @@ class Bridge internal constructor(
         clipboard: ClipboardPort,
         notifications: NotificationPort,
         input: InputPort,
-    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, notifications, input, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+        media: MediaPort,
+        share: SharePort,
+    ) : this(name, platform, appVersion, keyStore, transport, discovery, clipboard, notifications, input, media, share, CoroutineScope(SupervisorJob() + Dispatchers.Main))
 
     private val identity = Identity.loadOrCreate(keyStore)
     private val myId = identity.fingerprint
@@ -148,6 +174,13 @@ class Bridge internal constructor(
 
         /** We already told the peer input is refused; set again once an event goes through. */
         var inputRefused = false
+
+        var battery: BatteryState? = null
+        var media: MediaState? = null
+        var mediaAt = 0L
+
+        /** Mac side: the peer asked for `media.state` on this connection. */
+        var watchesMedia = false
     }
 
     private val online = mutableMapOf<String, Session>()
@@ -173,6 +206,17 @@ class Bridge internal constructor(
     private var tailIsMotion = false
     private var inputPump: Job? = null
     private var heldButtons = 0
+
+    /** Tablet: the media card is on, so every connection asks the Mac for `media.state`. */
+    private var mediaWanted = false
+
+    /** Tablet: last battery reading, resent on every connect; null while battery reporting is off. */
+    private var myBattery: BatteryState? = null
+
+    /** Mac: whether [media] is polling, and the last state sent and when (for seek detection). */
+    private var mediaPolling = false
+    private var sentMedia: MediaState? = null
+    private var sentMediaAt = 0L
 
     /** For Swift, which can't collect a Flow: [onChange] runs on the main thread for every state. */
     fun observe(onChange: (BridgeState) -> Unit) {
@@ -332,6 +376,44 @@ class Bridge internal constructor(
         }
     }
 
+    /** Tablet: show (true) or stop showing the Mac's now-playing; the Mac only polls its players while asked. */
+    fun watchMedia(on: Boolean) {
+        scope.launch {
+            if (on == mediaWanted) return@launch
+            mediaWanted = on
+            online.values.forEach {
+                send(it, MediaCommand(if (on) MediaAction.WATCH else MediaAction.UNWATCH))
+                if (!on) it.media = null
+            }
+            refreshPaired()
+        }
+    }
+
+    /** Tablet: play, pause, next, prev, or [MediaAction.VOLUME] with [volume] 0–100, on the Mac's player. */
+    fun media(action: MediaAction, volume: Int? = null) {
+        if (action == MediaAction.WATCH || action == MediaAction.UNWATCH) return
+        scope.launch { online.values.forEach { send(it, MediaCommand(action, volume?.coerceIn(0, 100))) } }
+    }
+
+    /** Tablet: the battery now (sent at once and on every connect), or null to stop reporting it. */
+    fun battery(state: BatteryState?) {
+        scope.launch {
+            myBattery = state?.copy(level = state.level.coerceIn(0, 100))
+            myBattery?.let { b -> online.values.forEach { send(it, b) } }
+        }
+    }
+
+    /** Either side: open [text] on every connected peer: a lone http(s) link in its browser, other text as text (F12). */
+    fun share(text: String) {
+        scope.launch {
+            if (text.isBlank()) return@launch
+            if (text.encodeToByteArray().size > MAX_CLIPBOARD_BYTES) return@launch fail("Shared text is over 1 MB, so it wasn't sent")
+            if (online.isEmpty()) return@launch fail("Not connected, so the shared text wasn't sent")
+            val m = ShareText.of(text)
+            online.values.forEach { send(it, m) }
+        }
+    }
+
     private fun onDiscovered(peers: List<DiscoveredPeer>) {
         _state.update { it.copy(discovered = peers) }
         peers.forEach { p ->
@@ -417,6 +499,8 @@ class Bridge internal constructor(
         } finally {
             conn.close(CLOSE_NORMAL, "session ended")
             s.peer?.let { if (online[it.deviceId] === s) online.remove(it.deviceId) }
+            s.watchesMedia = false
+            updateMediaPolling()
             if (pairingSession === s) endPairing(null)
             refreshPaired()
         }
@@ -500,8 +584,84 @@ class Bridge internal constructor(
                 m is InputKey && m.keyCode != null && m.keyCode !in 0..MacKey.MAX -> send(s, ProtocolError("invalid_message", "bad keyCode"), env.id)
                 else -> onInput(s, m, env.id)
             }
+            is MediaState, is MediaCommand, is BatteryState, is ShareText -> if (!s.paired) {
+                send(s, ProtocolError("unauthorized", "pair first"), env.id)
+            } else {
+                onMediaOrShare(s, m, env.id)
+            }
         }
     }
+
+    private fun onMediaOrShare(s: Session, m: Message, id: String) {
+        when (m) {
+            is MediaState -> if (mediaWanted) {
+                s.media = m
+                s.mediaAt = now()
+                refreshPaired()
+            }
+            is MediaCommand -> when (m.action) {
+                MediaAction.WATCH, MediaAction.UNWATCH -> {
+                    s.watchesMedia = m.action == MediaAction.WATCH
+                    updateMediaPolling()
+                    // Already polling for another peer: this one gets the current state now, not at the next change.
+                    if (s.watchesMedia) sentMedia?.let { send(s, it.copy(position = expectedPosition(it))) }
+                }
+                MediaAction.VOLUME -> if (m.volume == null || m.volume !in 0..100) {
+                    send(s, ProtocolError("invalid_message", "volume must be 0–100"), id)
+                } else {
+                    media.command(m)
+                }
+                else -> media.command(m)
+            }
+            is BatteryState -> if (m.level !in 0..100) {
+                send(s, ProtocolError("invalid_message", "level must be 0–100"), id)
+            } else {
+                s.battery = m
+                refreshPaired()
+            }
+            is ShareText -> when {
+                (m.text == null) == (m.url == null) -> send(s, ProtocolError("invalid_message", "send text or url"), id)
+                // Never hand a peer-chosen file:, javascript: or app scheme to the OS opener.
+                m.url != null && !ShareText.isWebUrl(m.url) -> send(s, ProtocolError("invalid_message", "only http and https links"), id)
+                (m.text ?: m.url!!).encodeToByteArray().size > MAX_CLIPBOARD_BYTES -> send(s, ProtocolError("too_large", "shared text over 1 MB"), id)
+                !share.open(m) -> send(s, ProtocolError("share_off", "receiving links and text is turned off in Bridge there"), id)
+            }
+            else -> {}
+        }
+    }
+
+    /** Mac: poll the players only while some connected peer watches. */
+    private fun updateMediaPolling() {
+        val want = online.values.any { it.watchesMedia }
+        if (want == mediaPolling) return
+        mediaPolling = want
+        if (want) {
+            media.watch { state -> scope.launch { onLocalMedia(state) } }
+        } else {
+            media.watch(null)
+            sentMedia = null
+        }
+    }
+
+    /** Mac: send [m] to watchers unless only the position moved, and moved as expected (the tablet advances it itself). */
+    private fun onLocalMedia(m: MediaState) {
+        if (!mediaPolling) return
+        val last = sentMedia
+        if (last != null && m.copy(position = null) == last.copy(position = null) && !seeked(last, m)) return
+        sentMedia = m
+        sentMediaAt = now()
+        online.values.filter { it.watchesMedia }.forEach { send(it, m) }
+    }
+
+    private fun seeked(last: MediaState, m: MediaState): Boolean {
+        val p = m.position
+        val expected = expectedPosition(last)
+        if (p == null || expected == null) return p != expected
+        return abs(p - expected) > SEEK_TOLERANCE_S
+    }
+
+    private fun expectedPosition(m: MediaState): Double? =
+        m.position?.let { if (m.playing) it + (now() - sentMediaAt) / 1000.0 else it }
 
     private fun onInput(s: Session, m: Message, id: String) {
         val injected = if (m is InputPointer) input.pointer(m) else input.key(m as InputKey)
@@ -635,6 +795,8 @@ class Bridge internal constructor(
         online.put(id, s)?.takeIf { it !== s }?.let { drop(it, CLOSE_NORMAL, "replaced by a newer connection") }
         // Catch up on anything copied while we were apart; last-writer-wins sorts out which side keeps it.
         send(s, ClipboardRequest)
+        myBattery?.let { send(s, it) }
+        if (mediaWanted) send(s, MediaCommand(MediaAction.WATCH))
         _state.update { it.copy(message = null) }
         refreshPaired()
     }
@@ -654,7 +816,12 @@ class Bridge internal constructor(
     private fun rotateCode() = _state.update { s -> s.copy(invite = s.invite?.copy(code = newCode())) }
 
     private fun refreshPaired() = _state.update { s ->
-        s.copy(paired = keyStore.trustedPeers().map { PeerStatus(it.fingerprint, it.name, it.fingerprint in online, it.host) })
+        s.copy(
+            paired = keyStore.trustedPeers().map {
+                val session = online[it.fingerprint]
+                PeerStatus(it.fingerprint, it.name, session != null, it.host, session?.battery, session?.media, session?.mediaAt ?: 0)
+            },
+        )
     }
 
     private fun fail(message: String) = _state.update { it.copy(message = message) }
