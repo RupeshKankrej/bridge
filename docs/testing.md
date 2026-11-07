@@ -106,6 +106,24 @@ Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app
       (e.g. a Zoom/Meet screen share or AirPlay mirroring) with the default notification settings
 - [x] Music playback and the "Bridge is running" notification are never mirrored
 
+## M2.2 gate (trackpad and keyboard)
+Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
+If Bridge is already in System Settings → Privacy & Security → Accessibility from an older build, remove it (−) first:
+the grant is tied to the code signature, and a stale entry looks on but injects nothing.
+- [x] Tablet: home → Trackpad (enabled only while the Mac is connected): full screen, bars hidden, screen stays on
+- [ ] Without Accessibility: the first touch opens "Let the tablet control this Mac?" on the Mac; Open System Settings goes to
+      the Accessibility list with Bridge in it. The tablet shows the "allow Bridge under … Accessibility" error and the Mac
+      menu shows the same cause. Turn Bridge on: the pointer moves on the next touch, no restart
+- [x] One finger moves the pointer; slow is precise, a fast swipe crosses the screen; it stops at screen edges
+- [ ] Tap = click; two quick taps open a Finder item (double-click); two-finger tap = context menu
+- [x] Two-finger drag scrolls a Safari page and a Finder list both ways; the content follows the fingers
+- [ ] Pinch out / in in Safari zooms in / out (⌘= / ⌘−)
+- [x] Keyboard: type a sentence including an autocorrected word and a backspace; it matches on the Mac. Return in the field
+      presses Return. ⌘ then "c" / "v" copies and pastes; ⌘ then tab-key; esc and the arrows work; ⌥ then ⌫ deletes a word
+- [ ] Edge swipes near the pad's sides don't leave the trackpad screen (system back may still win in the outer strip)
+- [x] **Gate:** five minutes of normal use (browse, open files, type a short note) with no noticeable lag or stuck buttons
+      (passed 2026-11-07 after the TCP_NODELAY and Wi-Fi-lock fixes; residual Wi-Fi jitter accepted, see STATUS known issues)
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)

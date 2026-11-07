@@ -1,7 +1,7 @@
 # Status
 
 **Current phase:** 2 — Daily driver (Phase 1 released as v0.1.0 on 2026-11-07)
-**Current milestone:** M2.2 — Trackpad and keyboard from the tablet with Accessibility onboarding
+**Current milestone:** M2.3 — Media controls, battery, share-to-device
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -29,8 +29,17 @@
   Mac `UNUserNotificationCenter` grouped by app with action buttons, inline reply and dismiss sync both ways; DND and
   screen-sharing mute left to macOS. Device gate passed on 2026-11-07, including WhatsApp on the Mac within 1 s and an
   inline reply sent.
+- M2.2 — Trackpad and keyboard (ADR 0010). `core`: `input.pointer`/`input.key`, `InputPort`, 120 messages/s with pointer and
+  scroll deltas coalesced on the sender, clicks/keys/zoom steps kept in order, `permission_missing` once per refused run. Mac
+  `CGEvent` injection with double-click counts, Accessibility alert on first use. Android full-screen trackpad (move, tap,
+  two-finger scroll and right-click, pinch = ⌘=/⌘−) and keyboard bar with sticky modifiers; `TCP_NODELAY` on the control
+  socket and a low-latency Wi-Fi lock while the trackpad is open. Device gate passed on 2026-11-07 (Wi-Fi latency below).
 
 ## Known issues
+- M2.2 trackpad: pointer lag and jitter come mostly from Wi-Fi. With the app fixes (TCP_NODELAY, low-latency Wi-Fi lock on the
+  tablet) the Mac's AWDL still adds spikes up to ~250 ms, and the home Wi-Fi ~130–180 ms even with both radios busy
+  (ADR 0010). Workaround: `sudo ifconfig awdl0 down` (disables AirDrop/Handoff until `up` or reboot). Accepted as is on
+  2026-11-07; a USB path (ADB reverse) is the option if it ever matters.
 - M1.4 throughput gate (≥ 40 MB/s) not measured: the home Wi-Fi gives raw TCP of only ~7–8 MB/s between the Mac and the
   Pad 3, and Bridge runs at that limit. Re-run with the Mac on Ethernet and a faster access point (docs/testing.md, M1.4c
   checks). Deferred by agreement on 2026-11-07.
