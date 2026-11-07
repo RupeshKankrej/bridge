@@ -397,7 +397,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 - [x] M1.2 mDNS discovery + QR pairing between the real MacBook and tablet
 - [x] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
 - [x] M1.4 LocalSend server passes interop with the official LocalSend app, both directions (split: M1.4a `core`, M1.4b Mac, M1.4c Android; gate after M1.4c)
-- [ ] M1.5 Mac menu-bar app and Android foreground service stay connected across sleep/wake
+- [x] M1.5 Mac menu-bar app and Android foreground service stay connected across sleep/wake
 
 **Phase 2 milestones**
 
