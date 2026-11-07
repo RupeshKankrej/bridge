@@ -1,7 +1,8 @@
 # Status
 
 **Current phase:** 1 — Foundation
-**Current milestone:** M1.4 — LocalSend server passes interop with the official LocalSend app, both directions
+**Current milestone:** M1.4 — LocalSend server passes interop with the official LocalSend app, both directions.
+Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — next; M1.4c Android adapters and UI. The gate runs after M1.4c.
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
@@ -22,6 +23,9 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M1.4a built: LocalSend v2.1 server, client and multicast discovery in `core` over new `StreamPort`/
+  `MulticastPort`/`FileStorePort`; client-certificate trust for paired peers; `Upload-Offset` resume; contract tests and
+  `localSendInteropTest`. Ktor dropped, `_localsend._tcp` replaced by multicast (ADR 0007). Interop not yet run.
 - 2026-11-06 — Spec v1.0 and repo skeleton created.
 - 2026-11-07 — M1.1 done: Gradle 9.8.1 + version catalog, KMP `core` module, protocol codec, `pong.json`/`error.json` schemas.
 - 2026-11-07 — M1.3 done: clipboard text both ways (ADR 0006); device gate passed except the password-manager skip,

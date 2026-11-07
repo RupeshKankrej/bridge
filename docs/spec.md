@@ -87,7 +87,7 @@ The macOS and Android apps differ only in their UI shell and platform adapters; 
 
 | Component | Responsibility | Lives in |
 | --- | --- | --- |
-| Discovery | Advertise and find peers on the LAN via mDNS (`_bridge._tcp` and `_localsend._tcp`) | Shared core, with a platform mDNS adapter |
+| Discovery | Find Bridge peers via mDNS (`_bridge._tcp`) and LocalSend devices via LocalSend's multicast UDP announce (224.0.0.167:53317) | Shared core, with platform mDNS and multicast adapters |
 | Pairing | One-time trust: QR code carries the device's public key + a short session code; both sides store the peer's key | Shared core |
 | Session | Persistent TLS 1.3 WebSocket per peer; heartbeat, reconnect with backoff, message routing | Shared core |
 | Feature modules | Clipboard, notifications, remote input, media, file transfer, screen stream | Shared core (logic) + platform adapters (OS APIs) |
@@ -172,13 +172,15 @@ Bridge implements the LocalSend v2.1 HTTP protocol unchanged, so any LocalSend a
 | /api/localsend/v2/upload | POST | One file per request, `?sessionId=&fileId=&token=`, raw body |
 | /api/localsend/v2/cancel | POST | Abort a session |
 
-Bridge extensions, only between two Bridge peers: resumable uploads via a `Range` header, folder structure preserved through the `fileName` path, and progress events on the control channel. Default port 53317 so existing LocalSend clients find Bridge without configuration.
+The server is HTTPS (TLS 1.3) only; LocalSend devices in HTTP mode (encryption off) are not supported. It asks every client for a TLS certificate but doesn't require one: LocalSend clients send none, Bridge clients present their identity certificate, and a client whose certificate fingerprint is in the trusted list is a paired peer (the `fingerprint` body field is ignored, as LocalSend ignores it over HTTPS). Discovery is LocalSend's: a multicast announce, answered with `POST /register` or a multicast reply.
+
+Bridge extensions, only towards a paired peer recognised by its client certificate (ADR 0007): the `prepare-upload` response carries `X-Bridge-Resume: 1`, after which `HEAD /upload?sessionId=&fileId=&token=` returns the bytes received so far in `Upload-Offset`, and `POST /upload` with an `Upload-Offset` header appends from there. Folder structure travels in the `fileName` path, as in LocalSend; the receiver strips `..`, empty segments and control characters. Progress events on the control channel are not built yet. Default port 53317 so existing LocalSend clients find Bridge without configuration.
 
 ## 5. Feature specifications
 
 ### 5.1 Discovery and pairing (F1)
 
-- Both apps advertise `_bridge._tcp` with TXT records: `id` (fingerprint), `name`, `platform`, `v` (protocol), `caps` (comma list). Bridge also advertises `_localsend._tcp` for LocalSend clients.
+- Both apps advertise `_bridge._tcp` with TXT records: `id` (fingerprint), `name`, `platform`, `v` (protocol), `caps` (comma list). For LocalSend clients Bridge also joins LocalSend's multicast discovery (224.0.0.167:53317); LocalSend does not use mDNS.
 - Pairing flow: Mac shows a QR code (fingerprint + IP + port + 6-digit code). Tablet scans it, connects over TLS, sends `pair.request` with its own fingerprint. Both screens show the same 6-digit code; the user taps Confirm on the tablet. Mac stores the tablet's fingerprint; tablet stores the Mac's.
   - QR text: `bridge://pair?fp=<sha256 hex>&host=<ip>&port=<port>&code=<6 digits>`.
   - The tablet refuses the connection unless the server certificate's fingerprint equals `fp`; this authenticates the Mac.
@@ -207,7 +209,7 @@ Bridge extensions, only between two Bridge peers: resumable uploads via a `Range
 - Send from Mac: drag files onto the menu-bar icon, a Finder Services menu item "Send to <tablet>", or a Share-menu extension.
 - Send from tablet: share-sheet target, or in-app file picker (SAF) supporting multiple files and folders.
 - Receive: paired peers auto-accept into a configurable folder (`~/Downloads/Bridge` on Mac, `Download/Bridge` on Android). Unpaired LocalSend clients trigger an accept/decline prompt listing file names and sizes.
-- Progress UI on both sides: per-file and total bytes, speed, cancel. Transfers survive a brief Wi-Fi drop via `Range` resume (Bridge peers only).
+- Progress UI on both sides: per-file and total bytes, speed, cancel. Transfers survive a brief Wi-Fi drop via `Upload-Offset` resume (paired Bridge peers only; about a minute of retries).
 - Interop test matrix: LocalSend on Windows, Linux, iOS and Android must be able to send to and receive from both Bridge apps.
 
 ### 5.4 Notification mirroring (F5)
@@ -282,7 +284,7 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 
 ## 6. Platform specifics
 
-**Shared core (`core/`, Kotlin Multiplatform)** — targets `jvm` for tests, `android`, `macosArm64`/`macosX64` and later `iosArm64`. Contains: protocol models and codec (kotlinx.serialization), session state machine, pairing, clipboard/notification/input/media modules, LocalSend HTTP client and server (Ktor), discovery interface. Platform code implements small port interfaces: `ClipboardPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`, `TransportPort` (the TLS WebSocket itself, because Ktor on Kotlin/Native has no TLS server; ADR 0005). Exposed to Swift as an XCFramework.
+**Shared core (`core/`, Kotlin Multiplatform)** — targets `jvm` for tests, `android`, `macosArm64`/`macosX64` and later `iosArm64`. Contains: protocol models and codec (kotlinx.serialization), session state machine, pairing, clipboard/notification/input/media modules, LocalSend HTTP/1.1 client and server over `StreamPort` (ADR 0007), discovery interface. Platform code implements small port interfaces: `ClipboardPort`, `NotificationPort`, `InputPort`, `MediaPort`, `DiscoveryPort`, `KeyStorePort`, `TransportPort` (the TLS WebSocket itself, because Ktor on Kotlin/Native has no TLS server; ADR 0005), `StreamPort` and `MulticastPort` (TLS byte streams and LocalSend multicast for the file API; ADR 0007), `FileStorePort` (the receive folder). Exposed to Swift as an XCFramework.
 
 **macOS app (`apps/macos/`, Swift 5.10, SwiftUI + AppKit)**
 
@@ -337,7 +339,7 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 
 | Layer | Choice | Reason |
 | --- | --- | --- |
-| Shared core | Kotlin Multiplatform 2.x, kotlinx.coroutines, kotlinx.serialization, Ktor client + server (CIO engine) | One protocol implementation; Kotlin is closest to the Java you already write; Ktor gives the LocalSend HTTP server for free |
+| Shared core | Kotlin Multiplatform 2.x, kotlinx.coroutines, kotlinx.serialization; a minimal HTTP/1.1 client and server of its own over platform TLS (ADR 0007) | One protocol implementation; Kotlin is closest to the Java you already write; Ktor CIO has no TLS server and a TLS 1.2-only client, and LocalSend needs only a few endpoints |
 | Crypto | ECDSA P-256 keys in Keychain / Android Keystore, platform TLS 1.3 stacks (Network.framework, Conscrypt via OkHttp); SHA-256 via CommonCrypto / `MessageDigest` | Hardware-backed keys, no crypto library to ship; see ADR 0005 |
 | macOS UI | SwiftUI + AppKit, Swift Package Manager | Native menu-bar app; XCFramework from KMP |
 | Android UI | Jetpack Compose, Hilt, WorkManager; OkHttp (control-channel WebSocket client); Play services code scanner (QR) | Standard modern Android; OkHttp because Ktor CIO's TLS is 1.2-only |
@@ -371,7 +373,7 @@ bridge/
 
 - Unit tests in `core/commonTest`: codec round-trips for every message type, session state machine, pairing, clipboard conflict resolution, LocalSend request parsing.
 - Contract tests: a JVM test harness that runs two `core` instances on localhost and drives every feature end-to-end without any UI.
-- LocalSend interop: CI job downloads the official LocalSend CLI/desktop build and exchanges files with the `core` server in both directions.
+- LocalSend interop: `./gradlew :core:localSendInteropTest` runs `core` with JDK TLS adapters and exchanges files with the official LocalSend app in both directions; someone clicks in LocalSend, so it runs by hand, not in CI (LocalSend ships no CLI).
 - Device tests: a manual checklist per release on the real MacBook + tablet covering pairing, reconnect after sleep, Wi-Fi switch, large file (2 GB), 30-minute mirroring session. See `docs/testing.md`.
 - Performance budgets asserted in tests: clipboard propagation < 150 ms, file throughput ≥ 40 MB/s on Wi-Fi 5, mirroring latency measured with a timestamp overlay.
 
@@ -393,7 +395,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 - [x] M1.1 `core` builds for JVM, Android and macOS; `hello`/`ping` round-trip in a JVM test
 - [x] M1.2 mDNS discovery + QR pairing between the real MacBook and tablet
 - [x] M1.3 Clipboard text Mac → tablet and tablet → Mac (via tile)
-- [ ] M1.4 LocalSend server passes interop with the official LocalSend app, both directions
+- [ ] M1.4 LocalSend server passes interop with the official LocalSend app, both directions (split: M1.4a `core`, M1.4b Mac, M1.4c Android; gate after M1.4c)
 - [ ] M1.5 Mac menu-bar app and Android foreground service stay connected across sleep/wake
 
 **Phase 2 milestones**
