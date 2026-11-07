@@ -490,7 +490,7 @@ class FileTransfer internal constructor(
     private suspend fun sendAll(l: Live, peer: LocalSendPeer, files: List<OutgoingFile>) {
         var sessionId: String? = null
         try {
-            val dtos = files.map { FileDto(newId(), it.path, it.size, it.mime) }
+            val dtos = files.map { FileDto(newId(), it.path, it.size, it.mime, preview = it.preview) }
             val body = json(PrepareUpload.serializer(), PrepareUpload(info(network = true), dtos.associateBy { it.id }))
             val (head, resp) = request(peer, "POST", "$API/prepare-upload", body, port = filesPort(peer))
             when (head.status) {

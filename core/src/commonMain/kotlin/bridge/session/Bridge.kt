@@ -94,9 +94,22 @@ data class BridgeState(
     val invite: PairingInvite? = null,
     /** Set once the QR has been scanned and the code checked; both sides show [Pairing.code]. */
     val pairing: Pairing? = null,
-    /** Last failure, worded for the user (spec §7). */
+    /** Last failure, worded for the user (spec §7); cleared once things work again. */
     val message: String? = null,
+    /** Diagnostics: the last failure or lost connection, kept after [message] clears, and when it happened (epoch ms). */
+    val lastError: String? = null,
+    val lastErrorAt: Long = 0,
 )
+
+/** From the heartbeat's round trip; what "link quality" means in the diagnostics screens. */
+enum class LinkQuality { EXCELLENT, GOOD, FAIR, POOR }
+
+fun linkQuality(rttMs: Long): LinkQuality = when {
+    rttMs < 30 -> LinkQuality.EXCELLENT
+    rttMs < 100 -> LinkQuality.GOOD
+    rttMs < 250 -> LinkQuality.FAIR
+    else -> LinkQuality.POOR
+}
 
 /**
  * [host] is the address this side dials, or null on the side that only accepts. [battery] and [media] are what the
@@ -110,6 +123,10 @@ data class PeerStatus(
     val battery: BatteryState? = null,
     val media: MediaState? = null,
     val mediaAt: Long = 0,
+    /** While online: the peer's address on this connection, when it went up (epoch ms), and the last ping's round trip. */
+    val address: String? = null,
+    val connectedAt: Long = 0,
+    val rttMs: Long? = null,
 )
 
 /** [awaitingLocalConfirm]: this side (the scanner) shows Confirm / Cancel; otherwise it waits for the peer. */
@@ -159,7 +176,15 @@ class Bridge internal constructor(
     private val _state = MutableStateFlow(BridgeState(myId))
     val state: StateFlow<BridgeState> = _state.asStateFlow()
 
-    private class Session(val conn: Connection, val invite: PairingInvite?) {
+    private class Session(val conn: Connection, val invite: PairingInvite?, val address: String?) {
+        val connectedAt = now()
+
+        /** The ping whose pong times the round trip, and the result. */
+        var pingId: String? = null
+        var pingAt = 0L
+        var rttMs: Long? = null
+        var closeReason: String? = null
+
         /** Text frames as String, binary frames as ByteArray, in arrival order. */
         val incoming = Channel<Any>(Channel.UNLIMITED)
 
@@ -309,7 +334,7 @@ class Bridge internal constructor(
         scope.launch {
             online.values.toList().forEach { s ->
                 val pongs = s.pongs
-                send(s, Ping)
+                ping(s)
                 scope.launch {
                     delay(PROBE_TIMEOUT)
                     if (s.pongs == pongs) drop(s, CLOSE_POLICY, "no answer after wake or network change")
@@ -440,7 +465,7 @@ class Bridge internal constructor(
                     val conn = connect(host, port) ?: continue
                     // Remember the address only once the pinned certificate proves it's the peer.
                     if (conn.peerFingerprint == fingerprint && (host to port) != stored) keyStore.saveTrustedPeer(peer.copy(host = host, port = port))
-                    if (runSession(conn, fingerprint, invite = null)) backoff = 1.seconds
+                    if (runSession(conn, fingerprint, invite = null, address = "$host:$port")) backoff = 1.seconds
                     break
                 }
                 delay(backoff)
@@ -457,13 +482,13 @@ class Bridge internal constructor(
     }
 
     /** Runs one connection until it closes. Returns true if the peer was paired on it. */
-    private suspend fun runSession(conn: Connection, expected: String?, invite: PairingInvite?): Boolean {
+    private suspend fun runSession(conn: Connection, expected: String?, invite: PairingInvite?, address: String? = null): Boolean {
         if (expected != null && conn.peerFingerprint != expected) {
             conn.close(CLOSE_POLICY, "unexpected certificate")
             fail(if (invite != null) "The device that answered isn't the one in the QR code" else "A device at the paired address has a different identity")
             return false
         }
-        val s = Session(conn, invite)
+        val s = Session(conn, invite, address ?: conn.remoteAddress)
         var everPaired = false
         conn.start(object : ConnectionListener {
             override fun onText(text: String) {
@@ -475,6 +500,7 @@ class Bridge internal constructor(
             }
 
             override fun onClosed(reason: String) {
+                if (s.closeReason == null) s.closeReason = reason
                 s.incoming.close()
             }
         })
@@ -487,7 +513,7 @@ class Bridge internal constructor(
                         if (s.peer == null) return@launch drop(s, CLOSE_POLICY, "no hello")
                         if (s.missedPongs >= MAX_MISSED_PONGS) return@launch drop(s, CLOSE_POLICY, "heartbeat timeout")
                         s.missedPongs++
-                        send(s, Ping)
+                        ping(s)
                     }
                 }
                 for (frame in s.incoming) {
@@ -498,7 +524,12 @@ class Bridge internal constructor(
             }
         } finally {
             conn.close(CLOSE_NORMAL, "session ended")
-            s.peer?.let { if (online[it.deviceId] === s) online.remove(it.deviceId) }
+            s.peer?.let {
+                if (online[it.deviceId] === s) {
+                    online.remove(it.deviceId)
+                    record("Lost ${it.name}: ${s.closeReason ?: "connection closed"}")
+                }
+            }
             s.watchesMedia = false
             updateMediaPolling()
             if (pairingSession === s) endPairing(null)
@@ -548,6 +579,11 @@ class Bridge internal constructor(
             Pong -> {
                 s.missedPongs = 0
                 s.pongs++
+                if (env.replyTo != null && env.replyTo == s.pingId) {
+                    s.rttMs = now() - s.pingAt
+                    s.pingId = null
+                    if (s.paired) refreshPaired()
+                }
             }
             is Hello -> onHello(s, m)
             is PairRequest -> onPairRequest(s, m, env.id)
@@ -797,6 +833,7 @@ class Bridge internal constructor(
         send(s, ClipboardRequest)
         myBattery?.let { send(s, it) }
         if (mediaWanted) send(s, MediaCommand(MediaAction.WATCH))
+        ping(s) // a round trip for the diagnostics now, not 15 s from now
         _state.update { it.copy(message = null) }
         refreshPaired()
     }
@@ -819,22 +856,39 @@ class Bridge internal constructor(
         s.copy(
             paired = keyStore.trustedPeers().map {
                 val session = online[it.fingerprint]
-                PeerStatus(it.fingerprint, it.name, session != null, it.host, session?.battery, session?.media, session?.mediaAt ?: 0)
+                PeerStatus(
+                    it.fingerprint, it.name, session != null, it.host, session?.battery, session?.media, session?.mediaAt ?: 0,
+                    session?.address, session?.connectedAt ?: 0, session?.rttMs,
+                )
             },
         )
     }
 
-    private fun fail(message: String) = _state.update { it.copy(message = message) }
+    private fun fail(message: String) = _state.update { it.copy(message = message, lastError = message, lastErrorAt = now()) }
+
+    private fun record(error: String) = _state.update { it.copy(lastError = error, lastErrorAt = now()) }
 
     private fun drop(s: Session, code: Int, reason: String) {
+        if (s.closeReason == null) s.closeReason = reason
         s.conn.close(code, reason)
         s.incoming.close()
     }
 
     private fun send(s: Session, m: Message, replyTo: String? = null, png: ByteArray? = null) {
+        sendWithId(s, m, replyTo, png)
+    }
+
+    private fun sendWithId(s: Session, m: Message, replyTo: String? = null, png: ByteArray? = null): String {
         val now = now()
-        s.conn.send(Codec.encode(Envelope(newUlid(now), now, m, replyTo, png?.size?.toLong(), png?.let { PNG_MIME })))
+        val id = newUlid(now)
+        s.conn.send(Codec.encode(Envelope(id, now, m, replyTo, png?.size?.toLong(), png?.let { PNG_MIME })))
         png?.let(s.conn::sendBinary)
+        return id
+    }
+
+    private fun ping(s: Session) {
+        s.pingAt = now()
+        s.pingId = sendWithId(s, Ping)
     }
 }
 

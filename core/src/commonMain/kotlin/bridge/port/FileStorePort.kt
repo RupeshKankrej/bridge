@@ -30,6 +30,9 @@ interface OutgoingFile {
     val size: Long
     val mime: String
 
+    /** LocalSend text message: the text itself, shown by the receiver instead of saving a file. Null for files. */
+    val preview: String? get() = null
+
     /** Opens the file positioned at [offset] (non-zero only when resuming). */
     @Throws(Exception::class)
     fun open(offset: Long): FileSource
