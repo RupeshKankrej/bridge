@@ -2,7 +2,7 @@
 
 **Current phase:** 1 — Foundation
 **Current milestone:** M1.4 — LocalSend server passes interop with the official LocalSend app, both directions.
-Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M1.4c Android adapters and UI — built. Gate: transfers and resume after a 10 s Wi-Fi drop pass; ≥ 40 MB/s needs a faster Wi-Fi setup to judge.
+Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M1.4c Android adapters and UI — built. Gate: LocalSend interop with both apps, Bridge ↔ Bridge transfers and resume after a 10 s Wi-Fi drop pass; ≥ 40 MB/s needs a faster Wi-Fi setup to judge.
 
 ## Done
 - M1.1 — `core` builds for JVM, Android and macosArm64; envelope + `hello`/`ping`/`pong`/`error` codec with
