@@ -26,27 +26,12 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Mirroring on/off, the notification-access prompt, and the per-app allow/block list (spec §5.4, §7). */
+/** Settings → Notifications → Choose apps: the per-app allow/block list (spec §5.4). */
 @Composable
-fun NotificationsPanel(port: AndroidNotifications, hasAccess: Boolean) {
-    val context = LocalContext.current
-    val enabled by port.enabled.collectAsState()
+fun NotificationAppsScreen(port: AndroidNotifications, onBack: () -> Unit) {
     val blocked by port.blocked.collectAsState()
-    var showApps by remember { mutableStateOf(false) }
-
-    Text("Notifications", style = MaterialTheme.typography.titleLarge)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text("Show this tablet's notifications on the Mac")
-        Switch(checked = enabled, onCheckedChange = port::setEnabled)
-    }
-    if (enabled && !hasAccess) {
-        Text("Bridge needs notification access to read them; they go only to your paired Mac, encrypted, over your Wi-Fi.")
-        Button(onClick = { openAccessSettings(context) }) { Text("Allow notification access") }
-    }
-    if (enabled) {
-        TextButton(onClick = { showApps = !showApps }) { Text(if (showApps) "Hide apps" else "Choose apps…") }
-        if (showApps) AppList(blocked, port::setBlocked)
-    }
+    ScreenTitle("Choose apps", onBack)
+    Section { AppList(blocked, port::setBlocked) }
 }
 
 private class App(val pkg: String, val label: String)
@@ -56,15 +41,8 @@ private fun AppList(blocked: Set<String>, setBlocked: (String, Boolean) -> Unit)
     val context = LocalContext.current
     var apps by remember { mutableStateOf<List<App>?>(null) }
     LaunchedEffect(Unit) { apps = withContext(Dispatchers.IO) { launchableApps(context) } }
-    val list = apps ?: return Text("Loading apps…")
-    Column {
-        list.forEach { app ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(app.label)
-                Switch(checked = app.pkg !in blocked, onCheckedChange = { allow -> setBlocked(app.pkg, !allow) })
-            }
-        }
-    }
+    val list = apps ?: return SettingRow("Loading apps…")
+    list.forEach { app -> SettingRow(app.label, checked = app.pkg !in blocked, onCheckedChange = { allow -> setBlocked(app.pkg, !allow) }) }
 }
 
 private fun launchableApps(context: Context): List<App> {
@@ -79,7 +57,7 @@ private fun launchableApps(context: Context): List<App> {
 }
 
 /** Android 11+ opens Bridge's own switch; Android 10 only has the list of all listeners. */
-private fun openAccessSettings(context: Context) {
+fun openAccessSettings(context: Context) {
     val intent = if (android.os.Build.VERSION.SDK_INT >= 30) {
         Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
             .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, ComponentName(context, MirrorService::class.java).flattenToString())

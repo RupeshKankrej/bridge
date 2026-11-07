@@ -57,11 +57,11 @@ class ShareActivity : ComponentActivity() {
             }
         }
         setContent {
-            MaterialTheme {
+            BridgeTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("Bridge", style = MaterialTheme.typography.headlineMedium)
-                        problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Page {
+                        ScreenTitle("Bridge")
+                        problem?.let { Notice(it) }
                         FilesPanel(app)
                         Button(onClick = ::finish) { Text("Done") }
                     }

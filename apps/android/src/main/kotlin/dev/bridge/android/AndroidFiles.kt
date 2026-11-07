@@ -175,11 +175,13 @@ class AndroidMulticast(context: Context) : MulticastPort {
 }
 
 /**
- * FileStorePort: `Download/Bridge` through MediaStore, which needs no storage permission on Android 10+.
+ * FileStorePort: `Download/Bridge` through MediaStore, which needs no storage permission on Android 10+, or the folder
+ * picked in Settings.
  * Entries stay IS_PENDING (invisible to other apps) until complete; MediaStore picks a free name on clashes.
  */
-class MediaStoreFileStore(private val resolver: ContentResolver) : FileStorePort {
+class MediaStoreFileStore(private val resolver: ContentResolver, private val tree: () -> Uri?) : FileStorePort {
     override fun create(path: String): FileSink {
+        tree()?.let { return createInTree(it, path) }
         val name = path.substringAfterLast('/')
         val folder = listOf(Environment.DIRECTORY_DOWNLOADS, "Bridge", path.substringBeforeLast('/', "")).filter { it.isNotEmpty() }.joinToString("/")
         val values = ContentValues().apply {
@@ -193,6 +195,40 @@ class MediaStoreFileStore(private val resolver: ContentResolver) : FileStorePort
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IOException("MediaStore refused $path")
         val out = resolver.openOutputStream(uri) ?: throw IOException("can't write $path")
         return MediaStoreSink(resolver, uri, out)
+    }
+
+    /**
+     * A folder the user picked in Settings (SAF). Subfolders are found or created per segment; the provider picks a
+     * free name like "a (1).txt" itself.
+     * shortcut: the file is visible under its final name while it downloads (SAF has no IS_PENDING); deleted if it fails.
+     */
+    private fun createInTree(tree: Uri, path: String): FileSink {
+        var dir = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        for (segment in path.split('/').dropLast(1)) dir = childDir(tree, dir, segment)
+        val name = path.substringAfterLast('/')
+        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+        val uri = DocumentsContract.createDocument(resolver, dir, mime, name) ?: throw IOException("the receive folder refused $path")
+        val out = resolver.openOutputStream(uri) ?: throw IOException("can't write $path")
+        return object : FileSink {
+            override fun write(data: ByteArray) = out.write(data)
+
+            override fun close(keep: Boolean) {
+                runCatching { out.close() }
+                if (!keep) DocumentsContract.deleteDocument(resolver, uri)
+            }
+        }
+    }
+
+    private fun childDir(tree: Uri, parent: Uri, name: String): Uri {
+        val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE)
+        resolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(parent)), columns, null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                if (c.getString(1) == name && c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    return DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))
+                }
+            }
+        }
+        return DocumentsContract.createDocument(resolver, parent, DocumentsContract.Document.MIME_TYPE_DIR, name) ?: throw IOException("can't create folder $name")
     }
 }
 

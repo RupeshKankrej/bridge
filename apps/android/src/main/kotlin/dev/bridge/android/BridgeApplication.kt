@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Owns the single core [Bridge] and [FileTransfer]; [BridgeService] keeps the process alive, activities observe them. */
 class BridgeApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        CrashLog.install(this)
+    }
+
     val clipboard by lazy { AndroidClipboard(this) }
     val notifications by lazy { AndroidNotifications(this) }
     val features by lazy { Features(this) }
@@ -44,7 +49,7 @@ class BridgeApplication : Application() {
     val files: FileTransfer by lazy {
         bridge
         val streams = AndroidStreams(keyStore) { _filesProblem.value = it }
-        FileTransfer(deviceName, Platform.ANDROID, Build.MODEL, keyStore, streams, AndroidMulticast(this), MediaStoreFileStore(contentResolver))
+        FileTransfer(deviceName, Platform.ANDROID, Build.MODEL, keyStore, streams, AndroidMulticast(this), MediaStoreFileStore(contentResolver) { features.receiveFolder.value })
     }
 
     private val _filesProblem = MutableStateFlow<String?>(null)
@@ -73,5 +78,14 @@ class BridgeApplication : Application() {
 
     fun cancelPending() {
         _pendingSend.value = emptyList()
+    }
+
+    /** Send screen: add to the selection without sending; the user then picks a device. */
+    fun select(more: List<OutgoingFile>) {
+        _pendingSend.value += more
+    }
+
+    fun unselect(file: OutgoingFile) {
+        _pendingSend.value -= file
     }
 }

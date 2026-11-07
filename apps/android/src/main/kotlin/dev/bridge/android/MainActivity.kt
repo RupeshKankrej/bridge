@@ -10,47 +10,57 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.enableEdgeToEdge
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+
+/** Tabs on the rail, like LocalSend's Receive / Send / Settings; sub-screens open over them. */
+enum class Tab(val label: String, @DrawableRes val icon: Int) {
+    HOME("Home", R.drawable.ic_home),
+    SEND("Send", R.drawable.ic_send),
+    SETTINGS("Settings", R.drawable.ic_settings),
+}
+
+enum class SubScreen { TRACKPAD, DIAGNOSTICS, NOTIFICATION_APPS }
 
 class MainActivity : ComponentActivity() {
     private val app get() = application as BridgeApplication
     private val bridge get() = app.bridge
-    private val batteryExempt = mutableStateOf(true)
-    private val notificationAccess = mutableStateOf(false)
+    private val system = mutableStateOf(SystemState())
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // Without it the foreground-service notification is hidden; the service still runs.
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -58,16 +68,50 @@ class MainActivity : ComponentActivity() {
         }
         startForegroundService(Intent(this, BridgeService::class.java))
         setContent {
-            MaterialTheme {
-                Surface(Modifier.fillMaxSize()) {
-                    var trackpad by remember { mutableStateOf(false) }
-                    if (trackpad) {
-                        TrackpadScreen(bridge) { trackpad = false }
-                    } else {
-                        HomeScreen(
-                            app, batteryExempt.value, notificationAccess.value,
-                            onScan = ::scan, onAllowBackground = ::requestBatteryExemption, onTrackpad = { trackpad = true },
-                        )
+            BridgeTheme {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
+                    var sub by rememberSaveable { mutableStateOf<SubScreen?>(null) }
+                    BackHandler(enabled = sub != null) { sub = null }
+                    OfferPrompt(app)
+                    when (sub) {
+                        SubScreen.TRACKPAD -> TrackpadScreen(bridge) { sub = null }
+                        SubScreen.DIAGNOSTICS -> Page { DiagnosticsScreen(app, system.value) { sub = null } }
+                        SubScreen.NOTIFICATION_APPS -> Page { NotificationAppsScreen(app.notifications) { sub = null } }
+                        null -> Row(Modifier.fillMaxSize().safeDrawingPadding()) {
+                            NavigationRail(Modifier.padding(top = 16.dp)) {
+                                Spacer(Modifier.size(8.dp))
+                                Tab.entries.forEach {
+                                    NavigationRailItem(
+                                        selected = tab == it,
+                                        onClick = { tab = it },
+                                        icon = { Icon(painterResource(it.icon), null) },
+                                        label = { Text(it.label) },
+                                    )
+                                }
+                            }
+                            Box(Modifier.weight(1f)) {
+                                when (tab) {
+                                    Tab.HOME -> Page {
+                                        HomeScreen(
+                                            app, system.value,
+                                            onScan = ::scan,
+                                            onAllowBackground = ::requestBatteryExemption,
+                                            onTrackpad = { sub = SubScreen.TRACKPAD },
+                                            onSend = { tab = Tab.SEND },
+                                        )
+                                    }
+                                    Tab.SEND -> Page { SendScreen(app) }
+                                    Tab.SETTINGS -> Page {
+                                        SettingsScreen(
+                                            app, system.value,
+                                            onAllowBackground = ::requestBatteryExemption,
+                                            onOpen = { sub = it },
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -76,17 +120,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        (application as BridgeApplication).clipboard.setForeground(true)
+        app.clipboard.setForeground(true)
         // Re-read on every resume: the user answers the system dialog or changes it in Settings.
-        batteryExempt.value = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
-        notificationAccess.value = app.notifications.hasAccess
+        system.value = SystemState(
+            batteryExempt = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName),
+            notificationAccess = app.notifications.hasAccess,
+        )
         // Now-playing only while Bridge is on screen: the Mac polls its players only while watched (ADR 0011).
         bridge.watchMedia(app.features.media.on.value)
     }
 
     override fun onPause() {
         bridge.watchMedia(false)
-        (application as BridgeApplication).clipboard.setForeground(false)
+        app.clipboard.setForeground(false)
         super.onPause()
     }
 
@@ -104,100 +150,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** What the system says about Bridge, read on every resume. */
+data class SystemState(val batteryExempt: Boolean = true, val notificationAccess: Boolean = false)
+
+/** A scrolling column of readable width, centred on the 13″ screen. */
 @Composable
-private fun HomeScreen(
-    app: BridgeApplication,
-    batteryExempt: Boolean,
-    notificationAccess: Boolean,
-    onScan: (host: String) -> Unit,
-    onAllowBackground: () -> Unit,
-    onTrackpad: () -> Unit,
-) {
-    val bridge = app.bridge
-    val state by bridge.state.collectAsState()
-    val mediaOn by app.features.media.on.collectAsState()
-    // The switch flipped while on screen; onResume/onPause cover the rest.
-    LaunchedEffect(mediaOn) { bridge.watchMedia(mediaOn) }
-    val resolver = app.contentResolver
-    val scope = rememberCoroutineScope()
-    // Persistable grants keep picked files readable later, e.g. when an upload resumes after a drop.
-    fun keep(uri: Uri) = runCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-    fun sendFrom(load: () -> List<UriFile>) = scope.launch { app.send(withContext(Dispatchers.IO) { load() }) }
-    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        uris.forEach(::keep)
-        sendFrom { uris.mapNotNull { UriFile.of(resolver, it, hold = false) } }
-    }
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
-        tree ?: return@rememberLauncherForActivityResult
-        keep(tree)
-        sendFrom { UriFile.ofTree(resolver, tree) }
-    }
-    Column(Modifier.verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Bridge", style = MaterialTheme.typography.headlineMedium)
-
-        if (!batteryExempt) {
-            Text("Bridge needs to run in the background to stay connected with the screen off.")
-            Button(onClick = onAllowBackground) { Text("Allow background use") }
-        }
-
-        state.paired.forEach { peer ->
-            Text("Paired with ${peer.name}", style = MaterialTheme.typography.titleLarge)
-            Text(if (peer.online) "Connected" else "Offline, reconnecting…")
-            val host = peer.host
-            // For networks that block mDNS: the Mac got a new address and can't announce it.
-            if (!peer.online && host != null) {
-                var typed by remember(host) { mutableStateOf(host) }
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OutlinedTextField(typed, { typed = it }, label = { Text("Mac address") }, singleLine = true)
-                    OutlinedButton(onClick = { bridge.setAddress(peer.fingerprint, typed) }, enabled = typed.isNotBlank()) { Text("Connect") }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onClick = onTrackpad, enabled = peer.online) { Text("Trackpad") }
-                OutlinedButton(onClick = { bridge.unpair(peer.fingerprint) }) { Text("Forget") }
-            }
-            if (mediaOn && peer.online) MediaCard(bridge, peer)
-        }
-
-        val pairing = state.pairing
-        when {
-            pairing != null -> {
-                Text("Check that ${pairing.peerName} shows the same code")
-                Text(pairing.code, style = MaterialTheme.typography.displayLarge, fontFamily = FontFamily.Monospace)
-                if (pairing.awaitingLocalConfirm) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Button(onClick = bridge::confirmPairing) { Text("Confirm") }
-                        OutlinedButton(onClick = bridge::rejectPairing) { Text("Cancel") }
-                    }
-                } else {
-                    Text("Waiting for ${pairing.peerName}…")
-                }
-            }
-            state.paired.isEmpty() -> {
-                var host by remember { mutableStateOf("") }
-                Button(onClick = { onScan(host) }) { Text("Scan QR code") }
-                OutlinedTextField(
-                    host, { host = it }, singleLine = true,
-                    label = { Text("Mac address (optional)") },
-                    supportingText = { Text("Only if the QR's address doesn't work here, e.g. Wi-Fi that isolates devices") },
-                )
-            }
-        }
-
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-
-        NotificationsPanel(app.notifications, notificationAccess)
-
-        FeaturesPanel(app.features)
-
-        Text("Files", style = MaterialTheme.typography.titleLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Button(onClick = { pickFiles.launch(arrayOf("*/*")) }) { Text("Send files") }
-            OutlinedButton(onClick = { pickFolder.launch(null) }) { Text("Send folder") }
-        }
-        Text("Received files go to Download/Bridge", style = MaterialTheme.typography.bodySmall)
-        val filesProblem by app.filesProblem.collectAsState()
-        filesProblem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        FilesPanel(app)
+fun Page(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier.widthIn(max = 840.dp).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) { content() }
     }
 }
