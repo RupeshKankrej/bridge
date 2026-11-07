@@ -180,6 +180,45 @@ class FilesContractTest {
     }
 
     @Test
+    fun receiverCancelStopsTheSenderAtTheNextFile() = runTest {
+        val p = nodes(tabletPresentsCertificate = false, paired = false)
+        var cancelled = false
+        val first = BytesFile("a", ByteArray(600_000)) {
+            if (!cancelled) {
+                cancelled = true
+                p.mac.files.cancel(p.mac.state.last().id) // the user taps cancel on the receiving side
+            }
+        }
+        p.tab.files.send(p.tab.state.peer(p.mac.id), listOf(first, BytesFile("b", ByteArray(10)), BytesFile("c", ByteArray(10))))
+        runCurrent()
+        p.mac.files.respond(p.mac.state.offer!!.id, accept = true)
+        settle()
+        val sent = p.tab.state.last()
+        assertEquals(TransferStatus.CANCELLED, sent.status, "$sent / receiver ${p.mac.state.last()}")
+        assertEquals("Cancelled by Mac", sent.error)
+        assertEquals(TransferStatus.CANCELLED, sent.files[2].status, "not attempted once the receiver refused")
+        assertEquals(TransferStatus.CANCELLED, p.mac.state.last().status)
+        assertTrue(p.mac.store.files.isEmpty())
+    }
+
+    @Test
+    fun senderCancelEndsTheReceiversSession() = runTest {
+        val p = nodes()
+        var cancelled = false
+        val big = BytesFile("a", ByteArray(600_000)) {
+            if (!cancelled) {
+                cancelled = true
+                p.tab.files.cancel(p.tab.state.last().id) // the user taps cancel on the sending side
+            }
+        }
+        p.tab.files.send(p.tab.state.peer(p.mac.id), listOf(big))
+        settle()
+        assertEquals(TransferStatus.CANCELLED, p.tab.state.last().status)
+        assertEquals(TransferStatus.CANCELLED, p.mac.state.last().status, "the sender's /cancel reached the receiver")
+        assertEquals(0, p.mac.store.partials)
+    }
+
+    @Test
     fun senderPathsCannotEscapeTheReceiveFolder() {
         assertEquals("etc/passwd", safePath("../../etc/passwd"))
         assertEquals("a/b.txt", safePath("/a/./b.txt"))

@@ -492,6 +492,8 @@ class FileTransfer internal constructor(
                     upload(l, i, peer, r.sessionId, dtos[i].id, token, f, resumable)
                 } catch (e: CancellationException) {
                     throw e
+                } catch (e: CancelledByReceiver) {
+                    throw e
                 } catch (e: Exception) {
                     // Like LocalSend: one failed file doesn't stop the rest.
                     l.error = "${f.path}: ${reason(e)}"
@@ -507,6 +509,8 @@ class FileTransfer internal constructor(
                 }
             }
             throw e
+        } catch (e: CancelledByReceiver) {
+            finish(l, TransferStatus.CANCELLED, "Cancelled by ${peer.alias}")
         } catch (e: Exception) {
             finish(l, TransferStatus.FAILED, "can't reach ${peer.alias} at ${peer.host}:${filesPort(peer)}: ${reason(e)}")
         }
@@ -535,6 +539,8 @@ class FileTransfer internal constructor(
                         withContext(NonCancellable + io) { src.close() }
                     }
                 }.first.status
+                // The session's tokens are gone: the receiver cancelled (or timed it out). The rest would get 403 too.
+                if (status == 403) throw CancelledByReceiver()
                 check(status == 200) { "upload refused ($status)" }
                 return setFile(l, i, TransferStatus.DONE, f.size)
             } catch (e: StreamException) {
@@ -576,9 +582,21 @@ class FileTransfer internal constructor(
             val all = headers + mapOf("Host" to "${peer.host}:$port", "Content-Length" to "$length", "Connection" to "close") +
                 (if (body != null) mapOf("Content-Type" to "application/json") else emptyMap())
             http.writeHead("$method $target HTTP/1.1", all)
-            body?.let { s.writeAll(it) }
-            writeBody?.invoke { s.writeAll(it) }
-            val head = http.readHead() ?: throw StreamException("no response")
+            val sent = try {
+                body?.let { s.writeAll(it) }
+                writeBody?.invoke { s.writeAll(it) }
+                null
+            } catch (e: StreamException) {
+                e
+            }
+            // A server may refuse before reading the body (e.g. 403 after a cancel) and close; its answer
+            // can still be waiting in our receive buffer, and it says more than "connection reset".
+            val head = try {
+                http.readHead()
+            } catch (e: StreamException) {
+                null
+            } ?: throw (sent ?: StreamException("no response"))
+            if (sent != null && head.status == 200) throw sent
             val noBody = method == "HEAD" || head.status == 204 || head.status == 304
             return head to (if (noBody) ByteArray(0) else http.readBytes(head, MAX_JSON, toEnd = true))
         } finally {
@@ -599,6 +617,8 @@ class FileTransfer internal constructor(
 }
 
 private val FINAL = setOf(TransferStatus.DONE, TransferStatus.FAILED, TransferStatus.CANCELLED, TransferStatus.DECLINED)
+
+private class CancelledByReceiver : Exception("cancelled by the receiver")
 
 private fun reason(e: Exception) = e.message ?: e::class.simpleName ?: "unknown error"
 

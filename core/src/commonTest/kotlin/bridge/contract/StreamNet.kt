@@ -151,13 +151,22 @@ class MemoryStore : FileStorePort {
     }
 }
 
-class BytesFile(override val path: String, val bytes: ByteArray, override val mime: String = "application/octet-stream") : OutgoingFile {
+/** [onRead] runs on every read: a hook for acting mid-upload, e.g. cancelling. */
+class BytesFile(
+    override val path: String,
+    val bytes: ByteArray,
+    override val mime: String = "application/octet-stream",
+    private val onRead: () -> Unit = {},
+) : OutgoingFile {
     override val size get() = bytes.size.toLong()
 
     override fun open(offset: Long): FileSource = object : FileSource {
         var at = offset.toInt()
 
-        override fun read(max: Int) = bytes.copyOfRange(at, minOf(bytes.size, at + max)).also { at += it.size }
+        override fun read(max: Int): ByteArray {
+            onRead()
+            return bytes.copyOfRange(at, minOf(bytes.size, at + max)).also { at += it.size }
+        }
 
         override fun close() = Unit
     }
