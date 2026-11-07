@@ -209,7 +209,7 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
 ### 5.3 File sharing, LocalSend-compatible (F3)
 
 - Send from Mac: drag files onto the menu-bar icon, the Finder Services item "Send with Bridge" (Services titles are fixed in Info.plist, so it can't name the device; it sends straight to the paired device when exactly one is nearby, otherwise the menu asks), or "Send files…" in the menu. A Share-menu extension is not built yet.
-- Send from tablet: share-sheet target, or in-app file picker (SAF) supporting multiple files and folders.
+- Send from tablet: share-sheet target, or the Send tab (LocalSend-style): pick by type — File (SAF, multiple), Media (system photo picker), Text, Folder, Paste (clipboard text) — then tap a nearby Bridge or LocalSend device. Text goes as a LocalSend text message: a `.txt` file whose `preview` carries the text, which LocalSend shows as a message (ADR 0012).
 - Receive: paired peers auto-accept into a configurable folder (`~/Downloads/Bridge` on Mac, `Download/Bridge` on Android). Unpaired LocalSend clients trigger an accept/decline prompt listing file names and sizes.
 - Progress UI on both sides: per-file and total bytes, speed, cancel. Transfers survive a brief Wi-Fi drop via `Upload-Offset` resume (paired Bridge peers only; about a minute of retries).
 - Interop test matrix: LocalSend on Windows, Linux, iOS and Android must be able to send to and receive from both Bridge apps.
@@ -297,7 +297,7 @@ Tier A is not available today: checked on 6 Nov 2026, the MacBook does not appea
 | Bridge devices only | Contacts Only | Tablet is invisible to AirDrop (Apple's Contacts Only cannot see non-Apple devices); file receive stays open only to paired Bridge/LocalSend peers. Labelled honestly in the UI: "Apple devices can't see you in this mode" |
 | Everyone for 10 minutes | Everyone for 10 minutes | Advertises to all nearby Apple devices; auto-reverts to Bridge-only after 10 minutes, with an "always" override for home use |
 
-The toggle lives in Bridge settings, the quick-settings tile and the Mac menu bar (so you can flip the tablet to Everyone from the Mac before sending). Incoming AirDrops always show an accept/decline card with sender name, file names and sizes, mirroring iOS.
+The toggle lives in Bridge settings and the quick-settings tile; a Mac menu-bar control (to flip the tablet to Everyone from the Mac before sending) needs a wire message and ships with Tier B. Incoming AirDrops always show an accept/decline card with sender name, file names and sizes, mirroring iOS.
 
 **Sending from the tablet**: share sheet → Bridge → nearby Apple devices listed by their AirDrop name alongside paired Bridge peers; the Apple device must be in Everyone mode. Sending to the paired Mac defaults to the LocalSend channel (faster, no 10-minute window) with AirDrop as an explicit alternative.
 
@@ -336,7 +336,12 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 
 **Mac menu-bar menu**: paired devices with connection status and tablet battery · Send clipboard now · Send files… · Mirror tablet · Mirror to tablet · Use tablet as trackpad · Settings · Quit.
 
-**Tablet home screen**: connection card (Mac name, status, link quality) · big buttons: Send clipboard, Send files, Trackpad, View Mac screen · recent transfers list · per-feature toggles.
+**Tablet layout** (ADR 0012): Material You (dynamic colour from the wallpaper, dark mode), a navigation rail with Home / Send / Settings.
+- Home: connection card (Mac name, status, link quality) · big buttons: Send clipboard, Send files, Trackpad (View Mac screen from Phase 3) · media card · recent transfers.
+- Send: type tiles, selection, nearby devices (5.3).
+- Settings: every per-feature switch, receive folder, AirDrop visibility, Forget, and Diagnostics.
+
+**Diagnostics (both platforms)**: per paired device the connection state and since when, peer address, link quality (heartbeat round trip: < 30 ms excellent, < 100 good, < 250 fair, else poor), battery; the last error or lost connection with its time; this device's ID, version and nearby devices; a "Reconnect now" button; the local crash log. Crash reports go to a local file only (`files/crash.log` on Android, `~/Library/Logs/Bridge/crash.log` on the Mac), never off the device.
 
 **Settings (both platforms)**
 
@@ -346,7 +351,7 @@ The toggle lives in Bridge settings, the quick-settings tile and the Mac menu ba
 | Clipboard sync | On | Text + images; max size slider |
 | Receive folder | Downloads/Bridge | Per-device |
 | Auto-accept files | Paired devices only | Options: always ask / paired only / everyone on LAN |
-| AirDrop visibility | Bridge devices only | Receiving Off / Bridge devices only / Everyone for 10 minutes; also in the quick tile and Mac menu bar (see 5.10) |
+| AirDrop visibility | Bridge devices only | Receiving Off / Bridge devices only / Everyone for 10 minutes; also in the quick tile (see 5.10). The Mac menu-bar control needs a wire message and comes with Tier B (Phase 3) |
 | Notification mirroring | Off | Per-app list on tablet |
 | Media controls, battery on Mac, links and text | Off | Three switches on the tablet (5.6) |
 | Mirroring quality | Auto | Resolution, fps and bitrate caps |
@@ -426,7 +431,7 @@ Phase 1 is the only one that must come first; phases 2 and 3 can swap if screen 
 - [x] M2.2 Trackpad and keyboard from the tablet with Accessibility onboarding
 - [x] M2.3 Media controls, battery, share-to-device (media controls known not to work yet; STATUS)
 - [ ] M2.4 AirDrop visibility toggle, receive-folder and transfer-list plumbing (UI only; wired to Tier A if Quick Share support reaches the Pad 3, otherwise to Tier B in Phase 3)
-- [ ] M2.5 Two weeks of daily use without manual reconnects
+- [ ] M2.5 Two weeks of daily use without manual reconnects; Phase 1 + 2 device checklist re-run and failures fixed; diagnostics screen and local crash log on both apps; tablet UI redesign (ADR 0012). Tag v0.2.0 at the end.
 
 **Phase 3 milestones**
 

@@ -146,6 +146,30 @@ Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreService
       on the tablet toasts the switch's name
 - [x] Tablet offline: Services → Send to Tablet opens the popover with "The tablet isn't connected"
 
+## M2.4 gate (AirDrop visibility, receive folder)
+Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
+After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Network if the tablet can't reach :53318.
+- [ ] Tablet Settings → AirDrop: three options; "Everyone for 10 minutes" says when it reverts; after 10 min it shows Bridge devices only
+- [ ] "Keep Everyone on" stays on after a force-stop and relaunch
+- [ ] Quick-settings tile "AirDrop" (add via the pencil): each tap cycles Off → Bridge devices only → Everyone; Settings follows
+- [ ] Tier A re-check: Quick Share visibility Everyone, Mac AirDrop Everyone: is the Pad 3 in the Mac's AirDrop sheet? (record the result in STATUS)
+- [ ] Tablet Settings → Receive folder → pick e.g. Documents/Inbox: a file from the Mac lands there, folders keep their structure;
+      "Use Download/Bridge again" goes back
+- [ ] Mac Settings → General → Receive folder → Change…: a file from the tablet lands there; Reset goes back to ~/Downloads/Bridge
+
+## M2.5 checks (diagnostics, crash log, redesign)
+- [ ] Tablet: Home / Send / Settings rail; colours follow the wallpaper (change it: Bridge follows); dark mode follows the system
+- [ ] Tablet Send: File, Media (photo picker), Folder each add to the selection; × removes; tap the Mac → sent, appears in Recent transfers
+- [ ] Tablet Send → Text "hello" → Mac: a .txt with the text lands in the receive folder. → official LocalSend: shown as a message
+- [ ] Tablet Send → Paste: clipboard text is added as a text item
+- [ ] Tablet Settings → About → Diagnostics: Connected since, peer address (Mac IP), link quality with ms, last error; turn Mac
+      Wi-Fi off 1 min: shows Offline and "Lost …: …" as the last error; Reconnect now reconnects within 5 s of Wi-Fi back
+- [ ] Mac popover gear / Diagnostics…: same fields from the Mac's side (peer address = tablet IP)
+- [ ] Crash log: `adb shell am crash dev.bridge.android` is not a Kotlin exception, so instead check that "No crashes recorded" shows,
+      then after any real crash the trace appears with Copy / Clear. Mac: `~/Library/Logs/Bridge/crash.log`, and "macOS crash reports" opens DiagnosticReports
+- [ ] Daily use (the M2.5 gate): 14 consecutive days with no Forget, re-pair, typed address or app restart needed to reconnect.
+      Log any manual reconnect in STATUS with the Diagnostics' last error
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)
