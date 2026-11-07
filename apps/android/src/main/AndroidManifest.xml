@@ -16,6 +16,14 @@
     <!-- Shows the system "Let Bridge always run in background?" dialog during setup (spec §6). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- The per-app allow/block list shows launchable apps; this declares that query instead of QUERY_ALL_PACKAGES. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".BridgeApplication"
         android:label="Bridge"
@@ -69,6 +77,17 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Notification mirroring (spec §5.4); the system binds it once the user grants notification access. -->
+        <service
+            android:name=".MirrorService"
+            android:exported="true"
+            android:label="Bridge notification mirroring"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".SendClipboardTile"

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /** Owns the single core [Bridge] and [FileTransfer]; [BridgeService] keeps the process alive, activities observe them. */
 class BridgeApplication : Application() {
     val clipboard by lazy { AndroidClipboard(this) }
+    val notifications by lazy { AndroidNotifications(this) }
     private val keyStore by lazy { AndroidKeyStorePort(this) }
     private val deviceName get() = Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
 
@@ -27,6 +28,7 @@ class BridgeApplication : Application() {
             transport = OkHttpTransport(keyStore),
             discovery = NsdDiscovery(this),
             clipboard = clipboard,
+            notifications = notifications,
         )
     }
 
