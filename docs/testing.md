@@ -72,6 +72,23 @@ Raw TCP baseline, no Bridge involved (Python receiver on the Mac times first to 
 `python3 rx.py 5002` on the Mac, then `adb shell "toybox nc <mac-ip> 5002 < /sdcard/Download/<big file>"`.
 The scripts are in the M1.4c PR description.
 
+## M1.5 gate (stays connected; Phase 1 release v0.1.0)
+Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
+The devices stay paired. Then run **every item of the device checklist above** (throughput and the password-manager skip are
+accepted known issues for v0.1.0, agreed 2026-11-07), plus:
+- [ ] Mac: first launch of this build turns on "Open at Login" in the menu (System Settings → General → Login Items lists Bridge);
+      log out and in: Bridge is in the menu bar and the tablet reconnects without opening anything on it
+- [ ] Tablet: home screen shows "Allow background use" until granted; the system dialog grants it and the card disappears
+- [ ] Mac sleep (close the lid) 10 min, open: connected again within 10 s of the tablet's screen being unlocked
+- [ ] Tablet screen off 30 min (Bridge exempt), unlock: connected within 10 s; clipboard Mac → tablet works
+- [ ] Switch the Mac to another Wi-Fi network (or a phone hotspot) and the tablet with it, then back: reconnects both times
+      without Forget/re-pair; if the Mac's IP changed, the tablet follows it (mDNS)
+- [ ] Watchdog: `adb shell am stopservice dev.bridge.android/.BridgeService` (or `adb shell am kill dev.bridge.android` with the
+      screen off), wait ≤ 15 min (or `adb shell cmd jobscheduler run -f dev.bridge.android <job id>` from
+      `adb shell dumpsys jobscheduler | grep -A3 dev.bridge.android`): "Bridge is running" notification is back and connected
+- [ ] Manual address: Forget on both sides, Mac → Pair a device…, on the tablet type the Mac's IP in "Mac address", scan: pairs.
+      Then, with the tablet offline, type a wrong address under the paired Mac → stays offline; type the right one → connects
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)

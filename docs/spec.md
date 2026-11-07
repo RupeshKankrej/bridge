@@ -190,7 +190,8 @@ Bridge extensions, only on port 53319 (ADR 0007): the `prepare-upload` response 
 - Session: after `hello`, each side sends `ping` every 15 s and closes the connection (1008) after 3 unanswered pings; a connection that sends no `hello` within 15 s is closed. The side that scanned the QR (and so knows the address) reconnects with exponential backoff 1, 2, 4 … 30 s.
 - Either side can initiate; the QR can equally be shown on the tablet and scanned by the Mac webcam.
 - Unpairing from either device deletes the stored key and closes the session.
-- Reconnect: on network change or app start, resolve the paired peer via mDNS; fall back to the last known IP for 30 s.
+- Reconnect: on app start, network change, wake and (tablet) unlock, the dialling side dials at once instead of waiting out the backoff. Each attempt tries the address mDNS currently resolves for the paired peer first, then the last known IP; the last known IP is never dropped, because mDNS may be slow or blocked. An address is saved only after the pinned TLS handshake proves it is the peer. Sessions that look open are pinged and dropped after 5 s without a `pong`. See ADR 0008.
+- Manual address: the tablet's pairing screen takes an optional Mac address that replaces the QR's host (fingerprint and code still come from the QR), and an offline paired Mac's address can be typed in, for networks that block mDNS.
 
 ### 5.2 Universal clipboard (F2, F4)
 

@@ -30,6 +30,11 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M1.5 built, device gate pending (docs/testing.md, M1.5 gate). `core`: `reconnect()` (dial now + 5 s ping probe),
+  mDNS-located address with the last known IP kept as fallback, typed address on pairing and for an offline Mac (ADR 0008).
+  Mac: `SMAppService` login item (on by default, menu toggle), reconnect on wake and `NWPathMonitor` change, listener restart
+  on failure. Android: NSD browse + resolve, reconnect on unlock and network change, battery-exemption prompt, 15-minute
+  WorkManager watchdog. v0.1.0 is tagged and Phase 2 starts once the gate passes.
 - 2026-11-07 — M1.4c built: Android share target, SAF files/folders, offer notification + dialog, transfer list; Bridge ↔ Bridge
   transfers work both ways (1 GB and 2 GB intact). Throughput gate not met **because of the network**: raw TCP between the devices
   is ~7–8 MB/s on the current Wi-Fi (Pad 3 link 432/540 Mbps through one AP); Bridge runs at that limit. Needs a better link to judge.
