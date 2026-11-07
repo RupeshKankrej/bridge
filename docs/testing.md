@@ -124,6 +124,31 @@ the grant is tied to the code signature, and a stale entry looks on but injects 
 - [x] **Gate:** five minutes of normal use (browse, open files, type a short note) with no noticeable lag or stuck buttons
       (passed 2026-11-07 after the TCP_NODELAY and Wi-Fi-lock fixes; residual Wi-Fi jitter accepted, see STATUS known issues)
 
+## M2.3 gate (media, battery, share)
+Rebuild core (`./gradlew :core:assembleBridgeCoreDebugXCFramework`), the Mac app, and `./gradlew :apps:android:installDebug`.
+On the tablet turn on the three switches under "Media, battery and links".
+Adding the Apple Events entitlement changed the Mac app's signature, and a re-signed dev build can lose its **Local Network**
+grant: the Mac listens but the tablet says "Can't reach …:53318". Allow the prompt, or turn Bridge off and on again in
+System Settings → Privacy & Security → Local Network. If Services → Send to Tablet is missing, tick it under Keyboard →
+Keyboard Shortcuts… → Services → Text, or run `/System/Library/CoreServices/pbs -flush`.
+- [ ] Spotify playing on the Mac, tablet home open: the card shows title, artist, Spotify, a moving progress bar. The
+      first time, the Mac asks "Bridge wants access to control Spotify"; after OK the card fills within 2 s
+- [ ] Deny that prompt (reset with `tccutil reset AppleEvents dev.bridge.mac` first): the Mac menu names the Automation setting
+- [ ] Tap ⏸ / ▶: Spotify pauses / plays within ~300 ms and the button flips. ⏭ / ⏮ change the track. Volume slider changes
+      Spotify's volume on release
+- [ ] Seek in Spotify on the Mac: the tablet's bar jumps within ~1 s. Quit Spotify: "Nothing playing". Music.app works the same
+- [ ] Leave the tablet's home screen (home button): within a second the Mac stops polling (Activity Monitor: no Apple Events to Spotify)
+- [ ] Battery switch on: the Mac's menu bar shows e.g. "82%" beside the icon and in the popover; plug in the charger → "⚡︎"
+      appears within a few seconds; unplug → it goes
+- [ ] **Gate:** play/pause Spotify on the Mac from the tablet
+- [x] **Gate:** Chrome on the tablet → Share → Bridge → the page opens in the Mac's default browser; a toast says "Sent to <Mac>"
+- [x] Share plain text (e.g. from Keep) → it's on the Mac's clipboard with a "Text from your tablet" notice
+- [x] Mac: select text in Safari → right-click → Services → Send to Tablet → a tablet notification; tap opens the share sheet.
+      Select a URL → the notification's tap opens it in the tablet's browser
+- [x] Links switch off on the tablet: Services → Send to Tablet makes the Mac menu say it's turned off there; Share → Bridge
+      on the tablet toasts the switch's name
+- [x] Tablet offline: Services → Send to Tablet opens the popover with "The tablet isn't connected"
+
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
 - [ ] `packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)` on the Pad 3 (needed for Tier B AirDrop)

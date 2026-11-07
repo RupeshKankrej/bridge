@@ -35,6 +35,12 @@
   two-finger scroll and right-click, pinch = ⌘=/⌘−) and keyboard bar with sticky modifiers; `TCP_NODELAY` on the control
   socket and a low-latency Wi-Fi lock while the trackpad is open. Device gate passed on 2026-11-07 (Wi-Fi latency below).
 
+- M2.3 — Media controls, battery, share-to-device (ADR 0011): **built, device gate pending** (docs/testing.md, M2.3 gate).
+  `core`: `media.state`/`media.command` (with watch/unwatch), `battery.state`, `share.text`, `MediaPort`, `SharePort`.
+  Mac: AppleScript for Spotify and Music (no MediaRemote, by agreement), tablet battery beside the menu-bar icon,
+  Services "Send to Tablet". Android: media card on the home screen, battery every 5 min and on charger change, text and
+  link share target, links/text from the Mac as notifications; three switches, off by default.
+
 ## Known issues
 - M2.2 trackpad: pointer lag and jitter come mostly from Wi-Fi. With the app fixes (TCP_NODELAY, low-latency Wi-Fi lock on the
   tablet) the Mac's AWDL still adds spikes up to ~250 ms, and the home Wi-Fi ~130–180 ms even with both radios busy
@@ -48,6 +54,10 @@
   types and add that marker to `MacClipboard`. Deferred by agreement on 2026-11-07.
 
 ## Log
+- 2026-11-07 — M2.3 share checks passed on the devices (link Chrome → Mac browser, text both ways, switch off, offline).
+  Media and battery checks still to run. The re-signed Mac build needed its Local Network grant renewed (docs/testing.md).
+- 2026-11-07 — M2.3 built, device gate pending. MediaRemote dropped for AppleScript only (hard rule 7; macOS 15.4+ blocks
+  it for non-Apple apps anyway). See ADR 0011.
 - 2026-11-07 — M2.1 device gate passed (all 8 checks). M2.1 done; next M2.2.
 - 2026-11-07 — M2.1 built, device gate pending (docs/testing.md, M2.1 gate). `core`: `notif.posted/dismissed/action/reply`,
   `NotificationPort`, binary frames on the control channel (ADR 0009). Android `NotificationListenerService` with an
