@@ -26,6 +26,7 @@ import bridge.protocol.Platform
 import bridge.protocol.Pong
 import bridge.protocol.ProtocolError
 import bridge.protocol.TEXT_MIME
+import bridge.protocol.UnsupportedTypeException
 import bridge.protocol.newUlid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -266,7 +267,13 @@ class Bridge internal constructor(
     }
 
     private fun handle(s: Session, text: String) {
-        val env = Codec.decode(text).getOrElse { return send(s, ProtocolError("invalid_message", "could not decode message")) }
+        val env = Codec.decode(text).getOrElse { e ->
+            return if (e is UnsupportedTypeException) {
+                send(s, ProtocolError("unsupported_type", "unknown type '${e.type}'"), e.id)
+            } else {
+                send(s, ProtocolError("invalid_message", "could not decode message"))
+            }
+        }
         if (env.v != PROTOCOL_VERSION) return drop(s, CLOSE_VERSION_MISMATCH, "protocol version ${env.v}")
         val m = env.message
         if (s.peer == null && m !is Hello && m !is Ping && m !is Pong) return send(s, ProtocolError("hello_required", "send hello first"), env.id)
@@ -382,6 +389,8 @@ class Bridge internal constructor(
     }
 
     private fun onPeerError(s: Session, m: ProtocolError) {
+        // An older peer build doesn't know one of our message types: expected between versions, nothing the user can fix.
+        if (m.code == "unsupported_type") return
         val peer = s.peer
         // Authentic: this connection is pinned to the peer we dialled. It forgot us, so forget it too.
         if (m.code == "not_paired" && peer != null && s.invite == null) {

@@ -9,6 +9,7 @@ import bridge.protocol.Envelope
 import bridge.protocol.Hello
 import bridge.protocol.PROTOCOL_VERSION
 import bridge.protocol.Ping
+import bridge.protocol.ProtocolError
 import bridge.protocol.Platform
 import bridge.session.CLOSE_POLICY
 import bridge.session.CLOSE_VERSION_MISMATCH
@@ -98,6 +99,26 @@ class SessionContractTest {
         raw.send(Codec.encode(Envelope("01JBV0R0Z7Q4X8K3M5N6P7Q8RB", 1, hello)))
         runCurrent()
         assertEquals(CLOSE_POLICY, raw.closeCode)
+    }
+
+    @Test
+    fun unknownTypeGetsUnsupportedTypeAndKeepsTheConnection() = runTest {
+        val p = twoDevices()
+        val raw = p.lan.dial(p.mac.host, CONTROL_PORT, "ab".repeat(32))!!
+        val replies = mutableListOf<String>()
+        raw.start(object : ConnectionListener {
+            override fun onText(text: String) {
+                replies += text
+            }
+
+            override fun onClosed(reason: String) {}
+        })
+        raw.send("""{"v":1,"id":"01JBV0R0Z7Q4X8K3M5N6P7Q8RC","type":"future.thing","ts":1,"payload":{}}""")
+        runCurrent()
+        val error = replies.map { Codec.decode(it).getOrThrow() }.single { it.message is ProtocolError }
+        assertEquals("unsupported_type", (error.message as ProtocolError).code)
+        assertEquals("01JBV0R0Z7Q4X8K3M5N6P7Q8RC", error.replyTo)
+        assertEquals(null, raw.closeCode)
     }
 
     @Test

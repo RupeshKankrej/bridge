@@ -80,7 +80,8 @@ class CodecSchemaTest {
     @Test
     fun decodeRejectsUnknownType() {
         val text = """{"v":1,"id":"01JBV0R0Z7Q4X8K3M5N6P7Q8RD","type":"foo.bar","ts":1,"payload":{}}"""
-        assertTrue(Codec.decode(text).isFailure)
+        val e = assertFailsWith<UnsupportedTypeException> { Codec.decode(text).getOrThrow() }
+        assertEquals("foo.bar" to "01JBV0R0Z7Q4X8K3M5N6P7Q8RD", e.type to e.id)
     }
 
     @Test

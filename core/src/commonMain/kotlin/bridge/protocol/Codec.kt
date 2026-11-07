@@ -1,10 +1,14 @@
 package bridge.protocol
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+
+/** A well-formed envelope whose `type` this build doesn't know, e.g. from a newer peer. [id] is the envelope's. */
+class UnsupportedTypeException(val type: String, val id: String) : IllegalArgumentException("unsupported type '$type'")
 
 /** One control-channel message: the spec §4 envelope with its typed payload. */
 data class Envelope(
@@ -40,6 +44,9 @@ object Codec {
     // "@type" can't be a Kotlin property name, so it never collides with a payload field.
     private const val DISCRIMINATOR = "@type"
 
+    // Element 1 of a sealed class descriptor lists the subclasses by serial name, i.e. the wire types.
+    private val knownTypes = Message.serializer().descriptor.getElementDescriptor(1).elementNames.toSet()
+
     private val json = Json {
         classDiscriminator = DISCRIMINATOR
         // Tolerant reader: a peer on the same major version may add optional fields.
@@ -61,9 +68,10 @@ object Codec {
         return json.encodeToString(WireEnvelope.serializer(), wire)
     }
 
-    /** Fails with a SerializationException / IllegalArgumentException on malformed JSON or an unknown type. */
+    /** Fails with [UnsupportedTypeException] for an unknown type, SerializationException / IllegalArgumentException if malformed. */
     fun decode(text: String): Result<Envelope> = runCatching {
         val wire = json.decodeFromString(WireEnvelope.serializer(), text)
+        if (wire.type !in knownTypes) throw UnsupportedTypeException(wire.type, wire.id)
         val tagged = JsonObject(wire.payload + (DISCRIMINATOR to JsonPrimitive(wire.type)))
         Envelope(
             id = wire.id,
