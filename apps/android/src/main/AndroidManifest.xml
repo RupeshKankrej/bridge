@@ -8,6 +8,9 @@
          of permissions; this one fits Bridge (mDNS on Wi-Fi) and is granted at install time. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keep the CPU and Wi-Fi awake during a transfer with the screen off (install-time permissions). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <application
         android:name=".BridgeApplication"
@@ -27,6 +30,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Share-sheet target for files from any app. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:label="Bridge">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".OfferReceiver"
+            android:exported="false" />
 
         <service
             android:name=".BridgeService"
