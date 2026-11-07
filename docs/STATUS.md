@@ -27,6 +27,10 @@ Split (ADR 0007): M1.4a `core` — built; M1.4b Mac adapters and UI — built; M
   `NSStatusItem` for drag-and-drop, Finder Services "Send with Bridge", offer prompt and transfer list. Paired peers moved
   to their own port 53319 because macOS can't do optional client certificates (ADR 0007 amended). curl → Mac app: 1 GB in
   3.1 s on localhost (~340 MB/s).
+- 2026-11-07 — M1.4b device check with official LocalSend 2.2 on the Pad 3, both directions. Fixed: LocalSend announces its
+  fingerprint in uppercase hex (pinning refused every send). Added: floating Accept / Decline card for incoming offers
+  instead of a system notification (macOS can't show coloured side-by-side action buttons), failure reasons in the
+  transfer list.
 - 2026-11-07 — M1.4a built: LocalSend v2.1 server, client and multicast discovery in `core` over new `StreamPort`/
   `MulticastPort`/`FileStorePort`; client-certificate trust for paired peers; `Upload-Offset` resume; contract tests and
   `localSendInteropTest`. Ktor dropped, `_localsend._tcp` replaced by multicast (ADR 0007). Interop not yet run.

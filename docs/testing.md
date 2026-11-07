@@ -48,9 +48,15 @@ Keychain access (certificate, then private key): Always Allow. Quit LocalSend.ap
 - [x] `lsof` shows Bridge listening on TCP 53317, 53318, 53319 and UDP 53317
 - [x] `curl -sk https://127.0.0.1:53317/api/localsend/v2/info` returns LocalSend fields; 53319 refuses curl (no certificate)
 - [x] A curl offer opens the menu with Accept / Decline; after Accept a 1 GB upload lands in `~/Downloads/Bridge` (~340 MB/s on localhost)
-- [ ] Drag a file and a folder onto the menu-bar icon: the device picker opens (or it sends to the one nearby paired device)
+- [x] Official LocalSend (Android, v2.2) on the Pad 3 → Mac: the Accept / Decline card appears top-right, file lands in `~/Downloads/Bridge`
+- [x] Drag a file onto the menu-bar icon → pick the tablet's LocalSend → accepted there and received
+- [ ] Drag a folder onto the menu-bar icon: structure kept on the receiver
 - [ ] Finder → right-click → Services → "Send with Bridge" (first time: run the app once, then `/System/Library/CoreServices/pbs -update` or log out/in)
 - [ ] Cancel from the transfer list stops a transfer on both sides
+
+Troubleshooting seen on the Pad 3: a failed transfer shows its reason in red in the list. "answered HTTP 500" from
+LocalSend means the receiving LocalSend can't write to its save folder: open LocalSend → Settings → Receive and grant
+storage access.
 
 ## One-time device checks
 - [ ] Android version reported by the Pad 3 in Settings → About
