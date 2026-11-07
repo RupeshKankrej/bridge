@@ -72,6 +72,8 @@ data class TransferFile(val name: String, val size: Long, val done: Long = 0, va
 
 enum class TransferStatus { WAITING, RUNNING, PAUSED, DONE, FAILED, CANCELLED, DECLINED }
 
+private val ACTIVE = setOf(TransferStatus.WAITING, TransferStatus.RUNNING, TransferStatus.PAUSED)
+
 data class Offer(val id: String, val senderName: String, val files: List<TransferFile>)
 
 /**
@@ -158,6 +160,11 @@ class FileTransfer internal constructor(
             outgoing[transferId]?.cancel()
             inbound?.takeIf { it.live.id == transferId }?.let { end(it, TransferStatus.CANCELLED) }
         }
+    }
+
+    /** "Clear" in the transfer list: drops finished, failed, cancelled and declined entries; running ones stay. */
+    fun clearFinished() {
+        scope.launch { _state.update { s -> s.copy(transfers = s.transfers.filter { it.status in ACTIVE }) } }
     }
 
     // ---- progress -------------------------------------------------------------------------------

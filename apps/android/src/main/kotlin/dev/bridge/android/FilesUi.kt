@@ -38,7 +38,7 @@ import bridge.files.TransferStatus
 
 private val Accept = Color(0xFF2E7D32)
 private val Decline = Color(0xFFC62828)
-private val ACTIVE = setOf(TransferStatus.WAITING, TransferStatus.RUNNING, TransferStatus.PAUSED)
+val ACTIVE_TRANSFERS = setOf(TransferStatus.WAITING, TransferStatus.RUNNING, TransferStatus.PAUSED)
 
 /** Share sheet: offer prompt, device picker for the shared files, and the transfer list. */
 @Composable
@@ -119,7 +119,7 @@ private fun TransferCard(transfer: Transfer, onCancel: () -> Unit) {
     fun bytes(n: Long) = Formatter.formatShortFileSize(context, n)
     val total = transfer.files.sumOf { it.size }
     val done = transfer.files.sumOf { it.done }
-    val active = transfer.status in ACTIVE
+    val active = transfer.status in ACTIVE_TRANSFERS
     var expanded by remember { mutableStateOf(false) }
     val summary = when (transfer.status) {
         TransferStatus.RUNNING -> "${bytes(done)} of ${bytes(total)} · ${bytes(transfer.bytesPerSecond)}/s"

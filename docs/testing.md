@@ -173,6 +173,7 @@ After a Mac rebuild: Always Allow both Keychain prompts, and re-allow Local Netw
 - [ ] Tablet Send: File, Media (photo picker), Folder each add to the selection; × removes; tap the Mac → sent, appears in Recent transfers
 - [ ] Tablet Send → Text "hello" → Mac: a .txt with the text lands in the receive folder. → official LocalSend: shown as a message
 - [ ] Tablet Send → Paste: clipboard text is added as a text item
+- [ ] Clear finished transfers: tablet Home → Recent transfers → Clear; Mac popover → Files → trash icon. Running transfers stay
 - [ ] Tablet Settings → About → Diagnostics: Connected since, peer address (Mac IP), link quality with ms, last error; turn Mac
       Wi-Fi off 1 min: shows Offline and "Lost …: …" as the last error; Reconnect now reconnects within 5 s of Wi-Fi back
 - [ ] Mac popover gear / Diagnostics…: same fields from the Mac's side (peer address = tablet IP)

@@ -306,6 +306,7 @@ final class BridgeModel: ObservableObject {
     func refreshNearby() { fileTransfer.refresh() }
     func respond(offerId: String, accept: Bool) { fileTransfer.respond(offerId: offerId, accept: accept) }
     func cancel(_ transfer: Transfer) { fileTransfer.cancel(transferId: transfer.id) }
+    func clearTransfers() { fileTransfer.clearFinished() }
 
     func openPairing() {
         guard let ip = lanIPv4Address() else {

@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -114,7 +115,11 @@ fun HomeScreen(
 
     val transfers by app.files.state.collectAsState()
     if (transfers.transfers.isNotEmpty()) {
-        Text("Recent transfers", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Recent transfers", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            // Running transfers stay; only finished, failed and cancelled ones go.
+            if (transfers.transfers.any { it.status !in ACTIVE_TRANSFERS }) TextButton(onClick = app.files::clearFinished) { Text("Clear") }
+        }
         TransferList(app, limit = 5)
     }
 }
