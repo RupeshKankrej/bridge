@@ -8,14 +8,19 @@ import bridge.port.DiscoveredPeer
 import bridge.port.DiscoveryPort
 import bridge.port.InputPort
 import bridge.port.KeyStorePort
+import bridge.port.MediaPort
 import bridge.port.NotificationEvents
 import bridge.port.NotificationPort
+import bridge.port.SharePort
 import bridge.port.TransportPort
 import bridge.port.TrustedPeer
 import bridge.protocol.InputKey
 import bridge.protocol.InputPointer
+import bridge.protocol.MediaCommand
+import bridge.protocol.MediaState
 import bridge.protocol.NotifPosted
 import bridge.protocol.Platform
+import bridge.protocol.ShareText
 import bridge.session.Bridge
 import kotlinx.coroutines.CoroutineScope
 import kotlin.random.Random
@@ -226,6 +231,30 @@ class FakeInput : InputPort {
     override fun key(event: InputKey) = allowed.also { if (it) received += event }
 }
 
+/** The Mac's players: [report] stands in for a poll; [watcher] is non-null while core has polling on. */
+class FakeMedia : MediaPort {
+    var watcher: ((MediaState) -> Unit)? = null
+    val commands = mutableListOf<MediaCommand>()
+
+    override fun watch(onState: ((MediaState) -> Unit)?) {
+        watcher = onState
+    }
+
+    override fun command(command: MediaCommand) {
+        commands += command
+    }
+
+    fun report(state: MediaState) = watcher!!(state)
+}
+
+/** [enabled] = false is the tablet with receiving turned off. */
+class FakeShare : SharePort {
+    var enabled = true
+    val opened = mutableListOf<ShareText>()
+
+    override fun open(share: ShareText) = enabled.also { if (it) opened += share }
+}
+
 class Device(val lan: Lan, val host: String, name: String, platform: Platform, scope: CoroutineScope) {
     val keyStore = FakeKeyStore()
     private val myFingerprint by lazy { fingerprint(keyStore.loadCertificate()!!) }
@@ -249,7 +278,9 @@ class Device(val lan: Lan, val host: String, name: String, platform: Platform, s
     val clipboard = FakeClipboard()
     val notifications = FakeNotifications()
     val input = FakeInput()
-    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, notifications, input, scope)
+    val media = FakeMedia()
+    val share = FakeShare()
+    val bridge = Bridge(name, platform, "test", keyStore, transport, discovery, clipboard, notifications, input, media, share, scope)
     val id get() = bridge.state.value.deviceId
     val state get() = bridge.state.value
 }

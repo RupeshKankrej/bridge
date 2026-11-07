@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bridge.local/protocol/media.state.json",
+  "title": "media.state payload",
+  "description": "Mac → tablet, only while the tablet watches (media.command watch). No fields but playing=false means nothing is playing. Sent on every change except the position advancing as expected; the receiver advances position itself while playing.",
+  "type": "object",
+  "properties": {
+    "app": { "type": "string", "description": "player name, e.g. Spotify or Music" },
+    "title": { "type": "string" },
+    "artist": { "type": "string" },
+    "playing": { "type": "boolean" },
+    "position": { "type": "number", "minimum": 0, "description": "seconds into the track" },
+    "duration": { "type": "number", "minimum": 0, "description": "track length in seconds" },
+    "volume": { "type": "integer", "minimum": 0, "description": "player volume, 0–100" }
+  },
+  "additionalProperties": false
+}
